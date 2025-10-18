@@ -13,7 +13,7 @@ if (!rootEl) {
 
     // Lock page title to "Prasadam Connect" so later assignments won't override it
     (function(){
-        const FIXED_TITLE = "Prasadam Connect";
+        const FIXED_TITLE = "Prasadam Connect Mobile App";
 
         function ensureTitleElement() {
             let el = document.querySelector("title");
