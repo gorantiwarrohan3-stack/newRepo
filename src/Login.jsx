@@ -2,9 +2,34 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { auth, getOrCreateRecaptcha, clearRecaptcha } from './firebase.js';
 import { signInWithPhoneNumber } from 'firebase/auth';
 
+// Common countries with their phone codes
+const COUNTRIES = [
+	{ code: 'US', name: 'United States', dialCode: '+1', flag: '🇺🇸' },
+	{ code: 'GB', name: 'United Kingdom', dialCode: '+44', flag: '🇬🇧' },
+	{ code: 'CA', name: 'Canada', dialCode: '+1', flag: '🇨🇦' },
+	{ code: 'AU', name: 'Australia', dialCode: '+61', flag: '🇦🇺' },
+	{ code: 'IN', name: 'India', dialCode: '+91', flag: '🇮🇳' },
+	{ code: 'DE', name: 'Germany', dialCode: '+49', flag: '🇩🇪' },
+	{ code: 'FR', name: 'France', dialCode: '+33', flag: '🇫🇷' },
+	{ code: 'IT', name: 'Italy', dialCode: '+39', flag: '🇮🇹' },
+	{ code: 'ES', name: 'Spain', dialCode: '+34', flag: '🇪🇸' },
+	{ code: 'BR', name: 'Brazil', dialCode: '+55', flag: '🇧🇷' },
+	{ code: 'MX', name: 'Mexico', dialCode: '+52', flag: '🇲🇽' },
+	{ code: 'JP', name: 'Japan', dialCode: '+81', flag: '🇯🇵' },
+	{ code: 'CN', name: 'China', dialCode: '+86', flag: '🇨🇳' },
+	{ code: 'KR', name: 'South Korea', dialCode: '+82', flag: '🇰🇷' },
+	{ code: 'RU', name: 'Russia', dialCode: '+7', flag: '🇷🇺' },
+	{ code: 'ZA', name: 'South Africa', dialCode: '+27', flag: '🇿🇦' },
+	{ code: 'AE', name: 'UAE', dialCode: '+971', flag: '🇦🇪' },
+	{ code: 'SG', name: 'Singapore', dialCode: '+65', flag: '🇸🇬' },
+	{ code: 'NL', name: 'Netherlands', dialCode: '+31', flag: '🇳🇱' },
+	{ code: 'SE', name: 'Sweden', dialCode: '+46', flag: '🇸🇪' },
+];
+
 export default function Login() {
 	const [step, setStep] = useState('phone'); // 'phone' | 'otp'
-	const [phone, setPhone] = useState('');
+	const [countryCode, setCountryCode] = useState('US'); // Default to US
+	const [phoneNumber, setPhoneNumber] = useState(''); // Phone number without prefix
 	const [otp, setOtp] = useState('');
 	const [toast, setToast] = useState(null);
 	const confirmationRef = useRef(null);
@@ -103,16 +128,35 @@ export default function Login() {
 	async function requestOtp(e) {
 		e.preventDefault();
 		try {
-			if (!/^\+\d{10,15}$/.test(phone)) {
-				showToast('Enter phone in E.164 format, e.g. +12345678901', 'error');
+			// Get selected country
+			const selectedCountry = COUNTRIES.find(c => c.code === countryCode);
+			if (!selectedCountry) {
+				showToast('Please select a valid country', 'error');
 				return;
 			}
+
+			// Validate phone number (digits only, reasonable length)
+			const phoneDigits = phoneNumber.replace(/\D/g, '');
+			if (!phoneDigits || phoneDigits.length < 7 || phoneDigits.length > 15) {
+				showToast('Please enter a valid phone number', 'error');
+				return;
+			}
+
+			// Combine country code with phone number
+			const fullPhone = selectedCountry.dialCode + phoneDigits;
+
+			// Validate E.164 format
+			if (!/^\+\d{10,15}$/.test(fullPhone)) {
+				showToast('Invalid phone number format', 'error');
+				return;
+			}
+
 			const recaptcha = getOrCreateRecaptcha('recaptcha-container');
 			if (!recaptcha) {
 				showToast('reCAPTCHA initialization failed. Please refresh the page.', 'error');
 				return;
 			}
-			const confirmation = await signInWithPhoneNumber(auth, phone, recaptcha);
+			const confirmation = await signInWithPhoneNumber(auth, fullPhone, recaptcha);
 			confirmationRef.current = confirmation;
 			setStep('otp');
 			showToast('OTP sent successfully!', 'success');
@@ -168,15 +212,31 @@ export default function Login() {
 				<div id="recaptcha-container" style={{ display: 'none' }} />
 				{step === 'phone' ? (
 					<form onSubmit={requestOtp} className="stack">
-						<label className="label" htmlFor="phone">Phone (E.164, e.g. +12345678901)</label>
-						<input
-							id="phone"
-							type="tel"
-							placeholder="+12345678901"
-							value={phone}
-							onChange={(e) => setPhone(e.target.value)}
-							className="input"
-						/>
+						<label className="label" htmlFor="phone">Phone Number</label>
+						<div style={{ display: 'flex', gap: '8px' }}>
+							<select
+								id="country-code"
+								value={countryCode}
+								onChange={(e) => setCountryCode(e.target.value)}
+								className="input"
+								style={{ width: '140px', flexShrink: 0 }}
+							>
+								{COUNTRIES.map(country => (
+									<option key={country.code} value={country.code}>
+										{country.flag} {country.code} ({country.dialCode})
+									</option>
+								))}
+							</select>
+							<input
+								id="phone"
+								type="tel"
+								placeholder="1234567890"
+								value={phoneNumber}
+								onChange={(e) => setPhoneNumber(e.target.value)}
+								className="input"
+								style={{ flex: 1 }}
+							/>
+						</div>
 						<button type="submit" className="btn">Send OTP</button>
 					</form>
 				) : (
