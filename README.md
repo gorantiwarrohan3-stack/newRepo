@@ -1,3 +1,5 @@
+# prasadamConnect
+
 ## React + Firebase PWA (Phone OTP Login)
 
 ### Features
@@ -35,5 +37,3 @@
 - Enter phone numbers in E.164 format, e.g. `+12345678901`.
 - reCAPTCHA is set to invisible; ensure you've configured your domain in Firebase Console.
 - For production hosting over HTTPS is required for service workers.
-
-
