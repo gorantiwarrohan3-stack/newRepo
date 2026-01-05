@@ -129,6 +129,174 @@ export async function updateUserProfile(uid, userData) {
 }
 
 /**
+ * Fetch prasadam offerings
+ */
+export async function getOfferings(status) {
+	const query = status ? `?status=${encodeURIComponent(status)}` : '';
+	return apiRequest(`/api/offerings${query}`, {
+		method: 'GET',
+	});
+}
+
+/**
+ * Create a new order for an offering
+ */
+export async function createOrder(uid, offeringId) {
+	return apiRequest('/api/orders', {
+		method: 'POST',
+		body: { uid, offeringId },
+	});
+}
+
+/**
+ * Fetch recent orders for a user
+ */
+export async function getOrders(uid) {
+	return apiRequest(`/api/orders/${encodeURIComponent(uid)}`, {
+		method: 'GET',
+	});
+}
+
+/**
+ * Cancel a student order
+ */
+export async function cancelOrder(orderId, uid) {
+	return apiRequest(`/api/orders/${encodeURIComponent(orderId)}/cancel`, {
+		method: 'POST',
+		body: { uid },
+	});
+}
+
+/**
+ * Supply owner: create supply batch
+ */
+export async function createSupplyBatch(batchData) {
+	return apiRequest('/api/supply/batches', {
+		method: 'POST',
+		body: batchData,
+	});
+}
+
+/**
+ * Supply owner: list supply batches
+ */
+export async function getSupplyBatches(uid) {
+	return apiRequest(`/api/supply/batches/${encodeURIComponent(uid)}`, {
+		method: 'GET',
+	});
+}
+
+/**
+ * Supply owner: create future offering announcement
+ */
+export async function createFutureOffering(data) {
+	return apiRequest('/api/supply/future-offerings', {
+		method: 'POST',
+		body: data,
+	});
+}
+
+/**
+ * Supply owner: list future offerings
+ */
+export async function getFutureOfferings(uid) {
+	return apiRequest(`/api/supply/future-offerings/${encodeURIComponent(uid)}`, {
+		method: 'GET',
+	});
+}
+
+/**
+ * Supply owner: publish a future offering as a live offering
+ */
+export async function publishFutureOffering(data) {
+	return apiRequest('/api/supply/offerings/publish', {
+		method: 'POST',
+		body: data,
+	});
+}
+
+/**
+ * Supply owner: list live offerings
+ */
+export async function getSupplyLiveOfferings(uid) {
+	return apiRequest(`/api/supply/offerings/${encodeURIComponent(uid)}`, {
+		method: 'GET',
+	});
+}
+
+/**
+ * Supply owner: update a live offering
+ */
+export async function updateSupplyOffering(offeringId, data) {
+	return apiRequest(`/api/supply/offerings/${encodeURIComponent(offeringId)}`, {
+		method: 'PUT',
+		body: data,
+	});
+}
+
+/**
+ * Supply owner: list recent orders
+ */
+export async function getSupplyOrders(uid, limit = 50) {
+	const safeLimit = Math.max(1, Math.min(Number.parseInt(limit, 10) || 50, 200));
+	return apiRequest(`/api/supply/orders/${encodeURIComponent(uid)}?limit=${safeLimit}`, {
+		method: 'GET',
+	});
+}
+
+/**
+ * Supply owner: analytics metrics
+ */
+export async function getSupplyAnalytics(uid) {
+	return apiRequest(`/api/supply/analytics/${encodeURIComponent(uid)}`, {
+		method: 'GET',
+	});
+}
+
+/**
+ * Supply owner: validate order QR
+ */
+export async function validateOrderQr(data) {
+	return apiRequest('/api/orders/validate', {
+		method: 'POST',
+		body: data,
+	});
+}
+
+/**
+ * Supply owner: generate custom QR code
+ */
+export async function createCustomQr(data) {
+	return apiRequest('/api/qrcodes', {
+		method: 'POST',
+		body: data,
+	});
+}
+
+/**
+ * Supply owner: list generated QR codes
+ */
+export async function getCustomQrCodes(uid) {
+	return apiRequest(`/api/qrcodes/${encodeURIComponent(uid)}`, {
+		method: 'GET',
+	});
+}
+
+/**
+ * Update subscription status for a user
+ */
+export async function updateSubscription({ uid, action, waived }) {
+	const body = { uid, action };
+	if (typeof waived === 'boolean') {
+		body.waived = waived;
+	}
+	return apiRequest('/api/subscription', {
+		method: 'POST',
+		body,
+	});
+}
+
+/**
  * Unregister a user (rollback endpoint for cleanup)
  */
 export async function unregisterUser(uid) {

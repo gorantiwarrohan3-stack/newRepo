@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { auth, getOrCreateRecaptcha, clearRecaptcha } from './firebase.js';
 import { signInWithPhoneNumber, signOut } from 'firebase/auth';
 import { checkUserExists, registerUser, recordLogin, createUserWithLogin, unregisterUser } from './api.js';
+import { useNavigate } from 'react-router-dom';
 
 // Common countries with their phone codes
 const COUNTRIES = [
@@ -28,6 +29,7 @@ const COUNTRIES = [
 ];
 
 export default function Login() {
+	const navigate = useNavigate();
 	const [mode, setMode] = useState('login'); // 'login' | 'register'
 	const [step, setStep] = useState('phone'); // 'phone' | 'otp' | 'complete-registration'
 	const [countryCode, setCountryCode] = useState('US');
@@ -346,6 +348,8 @@ export default function Login() {
 					// User exists - record login history
 					await recordLogin(user.uid, fullPhone);
 					showToast('Authentication successful!', 'success');
+					// Navigate to student dashboard
+					navigate('/student');
 				} catch (apiError) {
 					// Fail fast: Don't allow login if user existence cannot be verified
 					console.error('Could not verify user existence:', apiError);
@@ -414,6 +418,8 @@ export default function Login() {
 			});
 
 			showToast('Registration successful!', 'success');
+			// Navigate to student dashboard
+			navigate('/student');
 		} catch (err) {
 			// Handle specific error cases (e.g., API returned error that user already exists)
 			if (err.message && err.message.includes('already')) {

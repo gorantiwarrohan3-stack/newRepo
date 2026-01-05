@@ -1,6 +1,48 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Allow authenticated users to read offerings
+    match /offerings/{offeringId} {
+      allow read: if request.auth != null;
+      allow write: if false; // Only backend can write
+    }
+    
+    // Allow users to read their own profile
+    match /users/{userId} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if false; // Only backend can write
+    }
+    
+    // Allow users to read their own orders
+    match /orders/{orderId} {
+      allow read: if request.auth != null && 
+                     (resource.data.uid == request.auth.uid || 
+                      resource.data.ownerUid == request.auth.uid);
+      allow write: if false; // Only backend can write
+    }
+    
+    // Allow supply owners to read their own batches
+    match /supplyBatches/{batchId} {
+      allow read: if request.auth != null && 
+                     resource.data.ownerUid == request.auth.uid;
+      allow write: if false; // Only backend can write
+    }
+    
+    // Allow supply owners to read their own future offerings
+    match /futureOfferings/{offeringId} {
+      allow read: if request.auth != null && 
+                     resource.data.ownerUid == request.auth.uid;
+      allow write: if false; // Only backend can write
+    }
+    
+    // Allow supply owners to read their own custom QR codes
+    match /qrcodes/{qrId} {
+      allow read: if request.auth != null && 
+                     resource.data.ownerUid == request.auth.uid;
+      allow write: if false; // Only backend can write
+    }
+    
+    // Deny all other access
     match /{document=**} {
       allow read, write: if false;
     }

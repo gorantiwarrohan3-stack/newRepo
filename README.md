@@ -97,7 +97,7 @@ The frontend now uses a Flask API for registration and login history. Follow the
 
 6. **Run the Flask API:**
    ```bash
-   python app.py
+   python3 app.py
    ```
    The API will run on `http://localhost:5000`
 
