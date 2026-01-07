@@ -29,9 +29,9 @@ service cloud.firestore {
     }
     
     // Allow supply owners to read their own future offerings
+    // Allow all authenticated users (students) to read future offerings for announcements
     match /futureOfferings/{offeringId} {
-      allow read: if request.auth != null && 
-                     resource.data.ownerUid == request.auth.uid;
+      allow read: if request.auth != null;
       allow write: if false; // Only backend can write
     }
     

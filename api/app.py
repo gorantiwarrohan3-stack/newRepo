@@ -1161,6 +1161,16 @@ def create_future_offering():
         description = (data.get('description') or '').strip()
         scheduled_at = parse_iso_datetime(data.get('scheduledAt'))
         notes = (data.get('notes') or '').strip() or None
+        # Explicitly handle showNotesToStudents - default to False if not provided
+        show_notes_to_students = data.get('showNotesToStudents')
+        if show_notes_to_students is None:
+            show_notes_to_students = False
+        else:
+            # Convert to boolean: handle True, 'true', 'True', 1, etc.
+            if isinstance(show_notes_to_students, str):
+                show_notes_to_students = show_notes_to_students.lower() in ('true', '1', 'yes')
+            else:
+                show_notes_to_students = bool(show_notes_to_students)
 
         if not uid:
             return jsonify({'success': False, 'error': 'UID is required'}), 400
@@ -1174,12 +1184,18 @@ def create_future_offering():
             'description': description,
             'scheduledAt': scheduled_at,
             'notes': notes,
+            'showNotesToStudents': show_notes_to_students,  # Always explicitly set as boolean
             'createdAt': firestore.SERVER_TIMESTAMP,
             'updatedAt': firestore.SERVER_TIMESTAMP,
         }
 
         doc_ref = db.collection('futureOfferings').document()
         doc_ref.set(announcement)
+        
+        # Debug: Verify the field was saved
+        saved_doc = doc_ref.get()
+        saved_data = saved_doc.to_dict()
+        print(f"Saved document includes showNotesToStudents: {'showNotesToStudents' in saved_data}, value: {saved_data.get('showNotesToStudents')}")
 
         doc = doc_ref.get()
         payload = doc.to_dict() or {}
@@ -1247,6 +1263,43 @@ def list_future_offerings(uid):
         return jsonify({'success': True, 'announcements': announcements, 'count': len(announcements)}), 200
     except Exception as e:
         print(f"Error in list_future_offerings: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/supply/future-offerings/<future_offering_id>', methods=['DELETE'])
+def delete_future_offering(future_offering_id):
+    """Delete a future offering announcement.
+
+    Expected JSON body:
+    {
+        "uid": "owner uid"   # required for auth check
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        uid = (data.get('uid') or '').strip()
+        if not uid:
+            return jsonify({'success': False, 'error': 'UID is required'}), 400
+
+        if not future_offering_id:
+            return jsonify({'success': False, 'error': 'Future offering ID is required'}), 400
+
+        future_ref = db.collection('futureOfferings').document(future_offering_id)
+        doc = future_ref.get()
+        if not doc.exists:
+            return jsonify({'success': False, 'error': 'Future offering not found'}), 404
+
+        future_data = doc.to_dict() or {}
+        if future_data.get('ownerUid') != uid:
+            return jsonify({'success': False, 'error': 'Unauthorized: Future offering does not belong to this owner'}), 403
+
+        # Delete the future offering document
+        future_ref.delete()
+
+        return jsonify({'success': True, 'message': 'Future offering deleted successfully'}), 200
+    except Exception as e:
+        print(f"Error in delete_future_offering: {str(e)}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 
@@ -1464,6 +1517,43 @@ def update_supply_offering(offering_id):
         return jsonify({'success': True, 'offering': payload}), 200
     except Exception as e:
         print(f"Error in update_supply_offering: {str(e)}")
+        traceback.print_exc()
+        return jsonify({'success': False, 'error': 'Internal server error'}), 500
+
+
+@app.route('/api/supply/offerings/<offering_id>', methods=['DELETE'])
+def delete_supply_offering(offering_id):
+    """Delete a live offering owned by a supply owner.
+
+    Expected JSON body:
+    {
+        "uid": "owner uid"   # required for auth check
+    }
+    """
+    try:
+        data = request.get_json() or {}
+        uid = (data.get('uid') or '').strip()
+        if not uid:
+            return jsonify({'success': False, 'error': 'UID is required'}), 400
+
+        if not offering_id:
+            return jsonify({'success': False, 'error': 'Offering ID is required'}), 400
+
+        offering_ref = db.collection('offerings').document(offering_id)
+        doc = offering_ref.get()
+        if not doc.exists:
+            return jsonify({'success': False, 'error': 'Offering not found'}), 404
+
+        offering_data = doc.to_dict() or {}
+        if offering_data.get('ownerUid') != uid:
+            return jsonify({'success': False, 'error': 'Unauthorized: Offering does not belong to this owner'}), 403
+
+        # Delete the offering document
+        offering_ref.delete()
+
+        return jsonify({'success': True, 'message': 'Offering deleted successfully'}), 200
+    except Exception as e:
+        print(f"Error in delete_supply_offering: {str(e)}")
         traceback.print_exc()
         return jsonify({'success': False, 'error': 'Internal server error'}), 500
 

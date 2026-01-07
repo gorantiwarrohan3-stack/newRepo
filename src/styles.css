@@ -108,6 +108,24 @@ select.input option {
 	border: 1px solid rgba(226,232,240,0.10);
 	box-shadow: none;
 }
+
+.btn-danger {
+	background: rgba(239, 68, 68, 0.1);
+	color: var(--danger);
+	border: 1px solid rgba(239, 68, 68, 0.3);
+	box-shadow: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+	background: rgba(239, 68, 68, 0.2);
+	border-color: rgba(239, 68, 68, 0.5);
+}
+
+.supply-list-actions-group {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+}
 .btn-secondary.active {
 	background: rgba(34, 211, 238, 0.1);
 	border-color: var(--primary);
@@ -189,8 +207,28 @@ select.input option {
 	gap: 24px;
 }
 
+/* Side-by-side layout for Available Prasadam and Your Orders - 70:30 split */
+@media (min-width: 768px) {
+	.dashboard-card.offerings-card {
+		grid-column: span 1;
+	}
+	
+	.dashboard-card.orders-card {
+		grid-column: span 1;
+	}
+	
+	/* Ensure they appear side by side with 70:30 split */
+	.dashboard-grid {
+		grid-template-columns: 7fr 3fr;
+	}
+}
+
+/* Announcements card spans full width below */
+.dashboard-card.announcements-card {
+	grid-column: 1 / -1;
+}
+
 @media (min-width: 1024px) {
-	.dashboard-card.offerings-card,
 	.dashboard-card.profile-card {
 		grid-column: span 2;
 	}
@@ -457,7 +495,9 @@ select.input option {
 }
 
 /* Orders Carousel */
-.orders-carousel {
+.orders-carousel,
+.offerings-carousel,
+.announcements-carousel {
 	position: relative;
 	width: 100%;
 	overflow: hidden;
@@ -481,10 +521,11 @@ select.input option {
 	background: transparent;
 }
 
-.carousel-slide .order-item {
+.carousel-slide .order-item,
+.carousel-slide .offering-item {
 	width: 100%;
 	flex: 1;
-	/* Preserve existing order-item styles - don't override background/border */
+	/* Preserve existing order-item/offering-item styles - don't override background/border */
 }
 
 .carousel-controls {
@@ -683,6 +724,12 @@ select.input option {
 	max-width: 800px;
 	margin: 0 auto;
 	padding: 24px;
+}
+
+.profile-page {
+	max-width: 1100px;
+	margin: 90px auto 48px;
+	padding: 0 20px 60px;
 }
 
 .profile-page-header {
@@ -905,6 +952,16 @@ select.input option {
 	color: var(--text);
 	margin-bottom: 20px;
 	line-height: 1.5;
+}
+
+.modal-body {
+	margin: 20px 0;
+	color: var(--text);
+	line-height: 1.5;
+}
+
+.modal-body p {
+	margin: 0;
 }
 
 .modal-actions {
@@ -1171,6 +1228,177 @@ select.input option {
 	display: grid;
 	gap: 16px;
 	grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+/* White calendar and clock icons for date/time inputs (global) */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator {
+	filter: invert(1);
+	cursor: pointer;
+}
+
+input[type="date"]::-webkit-inner-spin-button,
+input[type="time"]::-webkit-inner-spin-button {
+	filter: invert(1);
+}
+
+/* Orders filters */
+.orders-filters {
+	display: flex;
+	gap: 12px;
+	margin-bottom: 20px;
+	flex-wrap: wrap;
+}
+
+.search-input-wrapper {
+	flex: 1;
+	min-width: 200px;
+}
+
+.search-input-wrapper .input {
+	width: 100%;
+}
+
+/* Pagination controls */
+.pagination-controls {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 16px;
+	margin-top: 24px;
+	padding-top: 20px;
+	border-top: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+}
+
+.pagination-info {
+	font-size: 14px;
+	color: var(--text-muted, rgba(255, 255, 255, 0.7));
+	min-width: 150px;
+	text-align: center;
+}
+
+.pagination-controls .btn-small {
+	padding: 8px 16px;
+	font-size: 14px;
+	background: linear-gradient(180deg, var(--primary) 0%, var(--primary-strong) 100%);
+	color: #03121a;
+	border: none;
+	box-shadow: 0 6px 16px rgba(34,211,238,0.35), inset 0 1px 0 rgba(255,255,255,0.25);
+	transition: transform 80ms ease, filter 120ms ease;
+}
+
+.pagination-controls .btn-small:hover:not(:disabled) {
+	filter: brightness(1.03);
+}
+
+.pagination-controls .btn-small:active:not(:disabled) {
+	transform: translateY(1px);
+}
+
+.pagination-controls .btn-small:disabled {
+	background: rgba(148, 163, 184, 0.1);
+	color: rgba(148, 163, 184, 0.5);
+	border: 1px solid rgba(226,232,240,0.10);
+	box-shadow: none;
+	cursor: not-allowed;
+	opacity: 0.5;
+	transform: none;
+}
+
+/* QR Scanner Overlay */
+.qr-scanner-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: rgba(0, 0, 0, 0.9);
+	backdrop-filter: blur(4px);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	z-index: 3000;
+	padding: 20px;
+}
+
+.qr-scanner-container {
+	background: var(--card);
+	border: 1px solid rgba(226, 232, 240, 0.1);
+	border-radius: 16px;
+	padding: 24px;
+	max-width: 500px;
+	width: 100%;
+}
+
+.qr-scanner-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	margin-bottom: 20px;
+}
+
+.qr-scanner-header h4 {
+	margin: 0;
+	font-size: 18px;
+}
+
+#qr-reader {
+	border-radius: 12px;
+	overflow: hidden;
+}
+
+#qr-reader__dashboard_section {
+	margin-top: 16px;
+}
+
+#qr-reader__dashboard_section_csr {
+	margin-bottom: 16px;
+}
+
+/* Order QR Code Styling - Center QR codes in cards */
+.order-qr {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	margin-top: 20px;
+	padding: 16px;
+}
+
+.order-qr .meta-label {
+	display: block;
+	margin-bottom: 12px;
+	text-align: center;
+	font-size: 14px;
+	color: var(--muted);
+}
+
+.order-qr-code {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	padding: 16px;
+	background: rgba(15, 23, 42, 0.4);
+	border-radius: 12px;
+	border: 1px solid rgba(226, 232, 240, 0.1);
+}
+
+.order-qr-large {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	margin: 20px 0;
+	padding: 20px;
+}
+
+.order-qr-large h5 {
+	margin-bottom: 16px;
+	text-align: center;
+}
+
+.order-qr-large .order-qr-code {
+	padding: 20px;
 }
 
 

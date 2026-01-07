@@ -54,6 +54,7 @@ instance/
 **/*serviceAccount*.json
 **/google-services.json
 **/GoogleService-Info.plist
+**/prasadam-connect-firebase-adminsdk-*.json
 
 # IDE
 .vscode/

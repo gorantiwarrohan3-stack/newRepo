@@ -4,6 +4,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useLocation, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
+import { Html5Qrcode } from 'html5-qrcode';
 import {
 	getUserProfile,
 	updateUserProfile,
@@ -15,6 +16,7 @@ import {
 	getSupplyBatches,
 	createFutureOffering,
 	getFutureOfferings,
+	deleteFutureOffering,
 	getSupplyAnalytics,
 	getSupplyOrders,
 	validateOrderQr,
@@ -23,6 +25,7 @@ import {
 	publishFutureOffering,
 	getSupplyLiveOfferings,
 	updateSupplyOffering,
+	deleteSupplyOffering,
 } from './api.js';
 
 export default function App() {
@@ -35,7 +38,7 @@ export default function App() {
 	const [profileLoading, setProfileLoading] = useState(false);
 	const [profileError, setProfileError] = useState(null);
 
-	const [currentPage, setCurrentPage] = useState('home'); // 'home' or 'profile'
+	const [currentPage, setCurrentPage] = useState('home'); // 'home', 'profile', or 'orders'
 	const [isEditing, setIsEditing] = useState(false);
 	const [editForm, setEditForm] = useState({ name: '', email: '', address: '' });
 	const [saving, setSaving] = useState(false);
@@ -52,6 +55,7 @@ export default function App() {
 	const [ordersLoading, setOrdersLoading] = useState(false);
 	const [ordersError, setOrdersError] = useState(null);
 	const [ordersRefreshKey, setOrdersRefreshKey] = useState(0);
+	const [currentOfferingIndex, setCurrentOfferingIndex] = useState(0);
 
 	const [orderingOfferingId, setOrderingOfferingId] = useState(null);
 	const [orderError, setOrderError] = useState(null);
@@ -91,11 +95,23 @@ export default function App() {
 		scheduledDate: '',
 		scheduledTime: '',
 		notes: '',
+		showNotesToStudents: false,
 	});
 
 	const [supplyOrders, setSupplyOrders] = useState([]);
 	const [supplyOrdersLoading, setSupplyOrdersLoading] = useState(false);
 	const [supplyOrdersError, setSupplyOrdersError] = useState(null);
+	const [ordersSearchQuery, setOrdersSearchQuery] = useState('');
+	const [ordersStatusFilter, setOrdersStatusFilter] = useState('all');
+	const [ordersWithUserNames, setOrdersWithUserNames] = useState([]);
+	const [ordersCurrentPage, setOrdersCurrentPage] = useState(1);
+	const ordersPerPage = 5;
+
+	// Pagination for overview cards
+	const [overviewAnnouncementsPage, setOverviewAnnouncementsPage] = useState(1);
+	const [overviewBatchesPage, setOverviewBatchesPage] = useState(1);
+	const [overviewOrdersPage, setOverviewOrdersPage] = useState(1);
+	const overviewItemsPerPage = 3;
 
 	const [supplyAnalytics, setSupplyAnalytics] = useState(null);
 	const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -105,6 +121,11 @@ export default function App() {
 	const [qrValidationResult, setQrValidationResult] = useState(null);
 	const [qrValidationError, setQrValidationError] = useState(null);
 	const [qrProcessing, setQrProcessing] = useState(false);
+	const [validatingOrderId, setValidatingOrderId] = useState(null);
+	const [qrScannerActive, setQrScannerActive] = useState(false);
+	const [qrScanningError, setQrScanningError] = useState(null);
+	const qrScannerRef = useRef(null);
+	const html5QrCodeRef = useRef(null);
 
 	const [customQrForm, setCustomQrForm] = useState({
 		title: '',
@@ -118,11 +139,23 @@ export default function App() {
 	const [publishingOfferingId, setPublishingOfferingId] = useState(null);
 	const [publishForm, setPublishForm] = useState({ quantity: '', feeCents: '' });
 	const [editingOfferingId, setEditingOfferingId] = useState(null);
-	const [editingOfferingForm, setEditingOfferingForm] = useState({ quantity: '', status: '' });
+	const [editingOfferingForm, setEditingOfferingForm] = useState({ quantity: '', status: '', availableDate: '', availableTime: '' });
+	const [deletingOfferingId, setDeletingOfferingId] = useState(null);
+	const [confirmModal, setConfirmModal] = useState(null);
 
 	const [qrCodes, setQrCodes] = useState([]);
 	const [qrCodesLoading, setQrCodesLoading] = useState(false);
 	const [qrCodesError, setQrCodesError] = useState(null);
+
+	// Student announcements (future offerings)
+	const [studentAnnouncements, setStudentAnnouncements] = useState([]);
+	const [announcementsLoading, setAnnouncementsLoading] = useState(false);
+	const [announcementsError, setAnnouncementsError] = useState(null);
+	const [announcementsCurrentPage, setAnnouncementsCurrentPage] = useState(1);
+	const announcementsPerPage = 1;
+
+	const [allOrdersCurrentPage, setAllOrdersCurrentPage] = useState(1);
+	const [allOrdersPerPage, setAllOrdersPerPage] = useState(1);
 
 	const isSupplyOwner = userProfile?.role === 'supplyOwner';
 	const supplyRoleInitialized = useRef(false);
@@ -289,7 +322,7 @@ export default function App() {
 						status: data.status || 'available',
 						availableAt,
 						availableQuantity: data.availableQuantity ?? null,
-						feeCents: data.feeCents ?? 0,
+						feeCents: data.feeCents ?? 0,	
 						launchFeeRefund:
 							data.launchFeeRefund === undefined || data.launchFeeRefund === null
 								? true
@@ -418,6 +451,30 @@ export default function App() {
 		}
 	}, [orders.length, orders.map(o => o.status).join(',')]); // Depend on orders length and statuses
 
+	// Reset offerings carousel index when offerings change
+	useEffect(() => {
+		const availableOfferings = offerings.filter((offering) => {
+			const availableQuantity =
+				typeof offering.availableQuantity === 'number'
+					? offering.availableQuantity
+					: null;
+			const isAvailable =
+				['available', 'open'].includes((offering.status || '').toLowerCase()) &&
+				(availableQuantity === null || availableQuantity > 0);
+			return isAvailable;
+		});
+		
+		if (availableOfferings.length > 0) {
+			// If current index is out of bounds, reset to valid index
+			if (currentOfferingIndex >= availableOfferings.length) {
+				setCurrentOfferingIndex(0);
+			}
+		} else {
+			// No available offerings, reset to 0
+			setCurrentOfferingIndex(0);
+		}
+	}, [offerings.length, offerings.map(o => o.status).join(',')]);
+
 	const formatCurrency = (cents) => {
 		const value = Number.isFinite(cents) ? cents : 0;
 		return `$${(value / 100).toFixed(2)}`;
@@ -465,7 +522,13 @@ export default function App() {
 			setIsEditing(false);
 			setSaveSuccess(false);
 		}
-		setCurrentPage(currentPage === 'profile' ? 'home' : 'profile');
+		if (currentPage === 'profile') {
+			setCurrentPage('home');
+		} else if (currentPage === 'orders') {
+			setCurrentPage('home');
+		} else {
+			setCurrentPage('profile');
+		}
 	};
 
 	const handleEdit = () => {
@@ -625,7 +688,28 @@ export default function App() {
 		try {
 			const response = await getSupplyOrders(ownerUid, limit);
 			if (response?.success) {
-				setSupplyOrders(response.orders || []);
+				const orders = response.orders || [];
+				setSupplyOrders(orders);
+				
+				// Fetch user names for each order
+				const ordersWithNames = await Promise.all(
+					orders.map(async (order) => {
+						if (!order.uid) return { ...order, userName: 'Unknown' };
+						try {
+							const userResponse = await getUserProfile(order.uid);
+							return {
+								...order,
+								userName: userResponse?.success && userResponse?.user?.name 
+									? userResponse.user.name 
+									: 'Unknown'
+							};
+						} catch (err) {
+							console.error(`Error fetching user name for order ${order.id}:`, err);
+							return { ...order, userName: 'Unknown' };
+						}
+					})
+				);
+				setOrdersWithUserNames(ordersWithNames);
 			} else {
 				setSupplyOrdersError(response?.error || 'Failed to load orders');
 			}
@@ -667,6 +751,81 @@ export default function App() {
 		loadSupplyOrders(ownerUid);
 		loadLiveOfferings(ownerUid);
 	}, [isSupplyOwner, user?.uid]);
+
+	// Cleanup QR scanner on unmount
+	useEffect(() => {
+		return () => {
+			if (html5QrCodeRef.current) {
+				html5QrCodeRef.current.stop().catch(() => {});
+				html5QrCodeRef.current.clear().catch(() => {});
+			}
+		};
+	}, []);
+
+	// Load future offerings for students (announcements)
+	useEffect(() => {
+		if (!user?.uid || isSupplyOwner) return; // Only for students
+		
+		setAnnouncementsLoading(true);
+		setAnnouncementsError(null);
+
+		// Query without orderBy to avoid index/permission issues, sort in memory
+		const announcementsRef = collection(db, 'futureOfferings');
+		
+		const unsubscribe = onSnapshot(
+			announcementsRef,
+			(snapshot) => {
+				const items = [];
+				snapshot.forEach((doc) => {
+					const data = doc.data() || {};
+					const scheduledAtRaw = data.scheduledAt;
+					const scheduledAt =
+						typeof scheduledAtRaw?.toDate === 'function'
+							? scheduledAtRaw.toDate()
+							: scheduledAtRaw
+								? new Date(scheduledAtRaw)
+								: null;
+
+					// Only show future announcements (not past ones)
+					if (scheduledAt && scheduledAt > new Date()) {
+						// Check if notes should be shown - handle various boolean representations
+						const showNotes = data.showNotesToStudents === true || 
+						                 data.showNotesToStudents === 'true' || 
+						                 String(data.showNotesToStudents).toLowerCase() === 'true';
+						const notesText = data.notes || '';
+						items.push({
+							id: doc.id,
+							title: data.title || 'Upcoming Prasadam',
+							description: data.description || '',
+							scheduledAt,
+							notes: (showNotes && notesText) ? notesText : '',
+						});
+					}
+				});
+
+				// Sort by scheduledAt in ascending order (client-side)
+				items.sort((a, b) => {
+					const timeA = a.scheduledAt ? a.scheduledAt.getTime() : 0;
+					const timeB = b.scheduledAt ? b.scheduledAt.getTime() : 0;
+					return timeA - timeB;
+				});
+
+				setStudentAnnouncements(items);
+				// Reset to first page if current page is out of bounds
+				if (announcementsCurrentPage > Math.ceil(items.length / announcementsPerPage) && items.length > 0) {
+					setAnnouncementsCurrentPage(1);
+				}
+				setAnnouncementsLoading(false);
+			},
+			(error) => {
+				console.error('Error listening to announcements:', error);
+				setAnnouncementsError(error.message || 'Failed to load announcements. Please ensure Firestore rules allow reading futureOfferings collection.');
+				setAnnouncementsLoading(false);
+			}
+		);
+
+		return () => unsubscribe();
+	}, [user?.uid, isSupplyOwner]);
 
 	const handleOrder = async (offering) => {
 		if (!user?.uid) return;
@@ -856,6 +1015,7 @@ export default function App() {
 			description: announcementForm.description.trim(),
 			scheduledAt: isoFromDateTime(announcementForm.scheduledDate, announcementForm.scheduledTime),
 			notes: announcementForm.notes.trim() || undefined,
+			showNotesToStudents: Boolean(announcementForm.showNotesToStudents), // Explicitly convert to boolean
 		};
 
 		if (!payload.scheduledAt) {
@@ -872,7 +1032,7 @@ export default function App() {
 					type: 'success',
 					message: 'Future offering scheduled.',
 				});
-				setAnnouncementForm({ title: '', description: '', scheduledDate: '', scheduledTime: '', notes: '' });
+				setAnnouncementForm({ title: '', description: '', scheduledDate: '', scheduledTime: '', notes: '', showNotesToStudents: false });
 				await loadFutureAnnouncements(user.uid);
 			} else {
 				const message = response?.error || 'Unable to create announcement';
@@ -886,6 +1046,72 @@ export default function App() {
 			setToast({ type: 'error', message });
 		} finally {
 			setFutureOfferingsLoading(false);
+		}
+	};
+
+	const handleStartQrScanner = async () => {
+		try {
+			setQrScanningError(null);
+			setQrScannerActive(true);
+			
+			// Create Html5Qrcode instance
+			const html5QrCode = new Html5Qrcode("qr-reader");
+			html5QrCodeRef.current = html5QrCode;
+			
+			// Helper function to start scanning with a specific camera config
+			const startScanning = async (cameraConfig) => {
+				return html5QrCode.start(
+					cameraConfig,
+					{
+						fps: 10,
+						qrbox: { width: 250, height: 250 },
+					},
+					(decodedText) => {
+						// Successfully scanned QR code
+						setQrTokenInput(decodedText);
+						handleStopQrScanner();
+					},
+					(errorMessage) => {
+						// Ignore scan errors (they're frequent while scanning)
+					}
+				);
+			};
+			
+			// Try back camera first (best for mobile), then fall back to front camera (desktop webcam)
+			try {
+				await startScanning({ facingMode: "environment" }); // Back camera (mobile)
+			} catch (envErr) {
+				// If back camera fails, try front camera (desktop webcam)
+				try {
+					await startScanning({ facingMode: "user" }); // Front camera (desktop)
+				} catch (userErr) {
+					// Both cameras failed
+					setQrScanningError('Failed to access camera. Please ensure you have a camera connected and have granted camera permissions.');
+					setQrScannerActive(false);
+					if (html5QrCodeRef.current) {
+						html5QrCodeRef.current = null;
+					}
+				}
+			}
+		} catch (err) {
+			console.error('Error starting QR scanner:', err);
+			setQrScanningError(err.message || 'Failed to access camera. Please ensure you have a camera connected and have granted camera permissions.');
+			setQrScannerActive(false);
+		}
+	};
+
+	const handleStopQrScanner = async () => {
+		try {
+			if (html5QrCodeRef.current) {
+				await html5QrCodeRef.current.stop();
+				await html5QrCodeRef.current.clear();
+				html5QrCodeRef.current = null;
+			}
+		} catch (err) {
+			console.error('Error stopping QR scanner:', err);
+		} finally {
+			setQrScannerActive(false);
+			setQrScanningError(null);
 		}
 	};
 
@@ -922,6 +1148,32 @@ export default function App() {
 			setToast({ type: 'error', message });
 		} finally {
 			setQrProcessing(false);
+		}
+	};
+
+	const handleValidateOrder = async (order) => {
+		if (!user?.uid || !order?.qrToken) return;
+		setValidatingOrderId(order.id);
+		try {
+			const response = await validateOrderQr({ uid: user.uid, qrToken: order.qrToken });
+			if (response?.success) {
+				setToast({
+					type: 'success',
+					message: 'Order validated and marked as collected.',
+				});
+				setOrdersRefreshKey((key) => key + 1);
+				await loadSupplyAnalytics(user.uid);
+				await loadSupplyOrders(user.uid);
+			} else {
+				const message = response?.error || 'Unable to validate order';
+				setToast({ type: 'error', message });
+			}
+		} catch (err) {
+			console.error('Error validating order:', err);
+			const message = err?.message || 'Unable to validate order';
+			setToast({ type: 'error', message });
+		} finally {
+			setValidatingOrderId(null);
 		}
 	};
 
@@ -968,6 +1220,10 @@ export default function App() {
 		setActiveSupplyTab(tab);
 		setQrValidationError(null);
 		setQrValidationResult(null);
+		// Stop QR scanner if active when switching tabs
+		if (qrScannerActive) {
+			handleStopQrScanner();
+		}
 		if (tab !== 'qr') {
 			setQrTokenInput('');
 		}
@@ -979,6 +1235,15 @@ export default function App() {
 		setPublishForm({ quantity: '', feeCents: '' });
 		setEditingOfferingId(null);
 		setEditingOfferingForm({ quantity: '', status: '' });
+		// Reset pagination when switching tabs
+		if (tab === 'orders') {
+			setOrdersCurrentPage(1);
+		}
+		if (tab === 'overview') {
+			setOverviewAnnouncementsPage(1);
+			setOverviewBatchesPage(1);
+			setOverviewOrdersPage(1);
+		}
 		if (!user?.uid) {
 			return;
 		}
@@ -993,7 +1258,7 @@ export default function App() {
 		} else if (tab === 'qr') {
 			loadCustomQrCodes(user.uid);
 		} else if (tab === 'overview') {
-			loadSupplyOrders(user.uid, 5);
+			loadSupplyOrders(user.uid);
 			loadFutureAnnouncements(user.uid);
 			loadSupplyBatches(user.uid);
 		} else if (tab === 'live-offerings') {
@@ -1160,40 +1425,148 @@ export default function App() {
 		const metrics = supplyAnalytics || {};
 		const metricValue = (value) => (analyticsLoading ? '…' : (value ?? '—'));
 		const totalFeesDisplay = analyticsLoading ? '…' : formatCurrency(metrics.totalFeesCents ?? 0);
-		const upcomingAnnouncements = futureOfferings.slice(0, 3);
-		const recentBatches = supplyBatches.slice(0, 3);
-		const recentOrders = supplyOrders.slice(0, 5);
+		
+		// Calculate pagination for overview cards
+		const totalAnnouncementsPages = Math.ceil(futureOfferings.length / overviewItemsPerPage);
+		const totalBatchesPages = Math.ceil(supplyBatches.length / overviewItemsPerPage);
+		const totalOrdersPages = Math.ceil(supplyOrders.length / overviewItemsPerPage);
+		
+		const announcementsStartIndex = (overviewAnnouncementsPage - 1) * overviewItemsPerPage;
+		const announcementsEndIndex = announcementsStartIndex + overviewItemsPerPage;
+		const upcomingAnnouncements = futureOfferings.slice(announcementsStartIndex, announcementsEndIndex);
+		
+		const batchesStartIndex = (overviewBatchesPage - 1) * overviewItemsPerPage;
+		const batchesEndIndex = batchesStartIndex + overviewItemsPerPage;
+		const recentBatches = supplyBatches.slice(batchesStartIndex, batchesEndIndex);
+		
+		const ordersStartIndex = (overviewOrdersPage - 1) * overviewItemsPerPage;
+		const ordersEndIndex = ordersStartIndex + overviewItemsPerPage;
+		const recentOrders = supplyOrders.slice(ordersStartIndex, ordersEndIndex);
 
-		const renderOrders = (ordersList) => (
-			<ul className="supply-list">
-				{ordersList.map((order) => (
-					<li key={order.id} className="supply-list-item">
-						<div>
-							<h4>{order.offeringTitle || 'Prasadam order'}</h4>
-							<p className="muted">Placed {formatDateTime(order.createdAt)}</p>
+		const renderOrders = (ordersList) => {
+			// Filter orders based on search query and status filter
+			let filteredOrders = ordersList;
+			
+			// Apply search filter
+			if (ordersSearchQuery.trim()) {
+				const query = ordersSearchQuery.toLowerCase();
+				filteredOrders = filteredOrders.filter((order) => {
+					const offeringTitle = (order.offeringTitle || '').toLowerCase();
+					const userName = (order.userName || '').toLowerCase();
+					return offeringTitle.includes(query) || userName.includes(query);
+				});
+			}
+			
+			// Apply status filter
+			if (ordersStatusFilter !== 'all') {
+				filteredOrders = filteredOrders.filter((order) => {
+					const status = (order.status || '').toLowerCase();
+					if (ordersStatusFilter === 'pending') {
+						return ['pending', 'in-progress', 'processing'].includes(status);
+					} else if (ordersStatusFilter === 'collected') {
+						return ['collected', 'completed'].includes(status);
+					} else if (ordersStatusFilter === 'cancelled') {
+						return status === 'cancelled';
+					}
+					return true;
+				});
+			}
+			
+			// Calculate pagination
+			const totalPages = Math.ceil(filteredOrders.length / ordersPerPage);
+			const startIndex = (ordersCurrentPage - 1) * ordersPerPage;
+			const endIndex = startIndex + ordersPerPage;
+			const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+			
+			// Reset to page 1 if current page is out of bounds
+			if (ordersCurrentPage > totalPages && totalPages > 0) {
+				setOrdersCurrentPage(1);
+			}
+			
+			if (filteredOrders.length === 0) {
+				return (
+					<div className="card-empty">
+						{ordersSearchQuery || ordersStatusFilter !== 'all' 
+							? 'No orders match your filters.' 
+							: 'No orders have been placed yet.'}
+					</div>
+				);
+			}
+			
+			return (
+				<>
+					<ul className="supply-list">
+						{paginatedOrders.map((order) => {
+						const status = (order.status || '').toLowerCase();
+						const isCollected = order.collectedAt || ['collected', 'completed'].includes(status);
+						const isCancelled = status === 'cancelled';
+						const canValidate = order.qrToken && !isCollected && !isCancelled;
+						return (
+							<li key={order.id} className="supply-list-item">
+								<div>
+									<h4>{order.offeringTitle || 'Prasadam order'}</h4>
+									<p className="muted">
+										{order.userName && <span>Ordered by {order.userName} • </span>}
+										Placed {formatDateTime(order.createdAt)}
+									</p>
+								</div>
+								<div className="supply-list-meta">
+									<div>
+										<span className="meta-label">Status</span>
+										<span className={`meta-value status-badge ${getStatusColorClass(order.status)}`}>
+											{formatStatus(order.status)}
+										</span>
+									</div>
+									<div>
+										<span className="meta-label">Reservation Fee</span>
+										<span className="meta-value">{formatCurrency(order.feeCents)}</span>
+									</div>
+									<div>
+										<span className="meta-label">Collected</span>
+										<span className="meta-value">
+											{order.collectedAt ? formatDateTime(order.collectedAt) : 'Not yet'}
+										</span>
+									</div>
+								</div>
+								{canValidate && (
+									<div className="supply-list-actions">
+										<button
+											className="btn btn-small"
+											onClick={() => handleValidateOrder(order)}
+											disabled={validatingOrderId === order.id}
+										>
+											{validatingOrderId === order.id ? 'Validating...' : 'Validate Order'}
+										</button>
+									</div>
+								)}
+							</li>
+						);
+					})}
+					</ul>
+					{totalPages > 1 && (
+						<div className="pagination-controls">
+							<button
+								className="btn btn-secondary btn-small"
+								onClick={() => setOrdersCurrentPage((prev) => Math.max(1, prev - 1))}
+								disabled={ordersCurrentPage === 1}
+							>
+								Previous
+							</button>
+							<span className="pagination-info">
+								Page {ordersCurrentPage} of {totalPages} ({filteredOrders.length} total)
+							</span>
+							<button
+								className="btn btn-secondary btn-small"
+								onClick={() => setOrdersCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+								disabled={ordersCurrentPage === totalPages}
+							>
+								Next
+							</button>
 						</div>
-						<div className="supply-list-meta">
-							<div>
-								<span className="meta-label">Status</span>
-								<span className={`meta-value status-badge ${getStatusColorClass(order.status)}`}>
-									{formatStatus(order.status)}
-								</span>
-							</div>
-							<div>
-								<span className="meta-label">Reservation Fee</span>
-								<span className="meta-value">{formatCurrency(order.feeCents)}</span>
-							</div>
-							<div>
-								<span className="meta-label">Collected</span>
-								<span className="meta-value">
-									{order.collectedAt ? formatDateTime(order.collectedAt) : 'Not yet'}
-								</span>
-							</div>
-						</div>
-					</li>
-				))}
-			</ul>
-		);
+					)}
+				</>
+			);
+		};
 
 		return (
 			<>
@@ -1313,23 +1686,46 @@ export default function App() {
 										<div className="card-loading">Loading announcements...</div>
 									) : futureOfferingsError ? (
 										<div className="card-error">{futureOfferingsError}</div>
-									) : upcomingAnnouncements.length === 0 ? (
+									) : futureOfferings.length === 0 ? (
 										<div className="card-empty">No announcements scheduled yet.</div>
 									) : (
-										<ul className="supply-list">
-											{upcomingAnnouncements.map((announcement) => (
-												<li key={announcement.id} className="supply-list-item">
-													<div>
-														<h4>{announcement.title}</h4>
-														<p className="muted">{announcement.description || 'No description provided.'}</p>
-													</div>
-													<div className="supply-list-meta">
-														<span className="meta-label">Scheduled</span>
-														<span className="meta-value">{formatDateTime(announcement.scheduledAt)}</span>
-													</div>
-												</li>
-											))}
-										</ul>
+										<>
+											<ul className="supply-list">
+												{upcomingAnnouncements.map((announcement) => (
+													<li key={announcement.id} className="supply-list-item">
+														<div>
+															<h4>{announcement.title}</h4>
+															<p className="muted">{announcement.description || 'No description provided.'}</p>
+														</div>
+														<div className="supply-list-meta">
+															<span className="meta-label">Scheduled</span>
+															<span className="meta-value">{formatDateTime(announcement.scheduledAt)}</span>
+														</div>
+													</li>
+												))}
+											</ul>
+											{totalAnnouncementsPages > 1 && (
+												<div className="pagination-controls">
+													<button
+														className="btn btn-secondary btn-small"
+														onClick={() => setOverviewAnnouncementsPage((prev) => Math.max(1, prev - 1))}
+														disabled={overviewAnnouncementsPage === 1}
+													>
+														Previous
+													</button>
+													<span className="pagination-info">
+														Page {overviewAnnouncementsPage} of {totalAnnouncementsPages} ({futureOfferings.length} total)
+													</span>
+													<button
+														className="btn btn-secondary btn-small"
+														onClick={() => setOverviewAnnouncementsPage((prev) => Math.min(totalAnnouncementsPages, prev + 1))}
+														disabled={overviewAnnouncementsPage === totalAnnouncementsPages}
+													>
+														Next
+													</button>
+												</div>
+											)}
+										</>
 									)}
 							</div>
 
@@ -1341,35 +1737,58 @@ export default function App() {
 									<div className="card-loading">Loading batches...</div>
 								) : supplyBatchesError ? (
 									<div className="card-error">{supplyBatchesError}</div>
-								) : recentBatches.length === 0 ? (
+								) : supplyBatches.length === 0 ? (
 									<div className="card-empty">Log a batch to track your supply.</div>
 								) : (
-									<ul className="supply-list">
-										{recentBatches.map((batch) => (
-											<li key={batch.id} className="supply-list-item">
-												<div>
-													<h4>{batch.title}</h4>
-													<p className="muted">{batch.notes || 'No notes provided.'}</p>
-												</div>
-												<div className="supply-list-meta">
+									<>
+										<ul className="supply-list">
+											{recentBatches.map((batch) => (
+												<li key={batch.id} className="supply-list-item">
 													<div>
-														<span className="meta-label">Quantity</span>
-														<span className="meta-value">{batch.quantity}</span>
+														<h4>{batch.title}</h4>
+														<p className="muted">{batch.notes || 'No notes provided.'}</p>
 													</div>
-													<div>
-														<span className="meta-label">Remaining</span>
-														<span className="meta-value">{batch.remainingQuantity ?? '—'}</span>
+													<div className="supply-list-meta">
+														<div>
+															<span className="meta-label">Quantity</span>
+															<span className="meta-value">{batch.quantity}</span>
+														</div>
+														<div>
+															<span className="meta-label">Remaining</span>
+															<span className="meta-value">{batch.remainingQuantity ?? '—'}</span>
+														</div>
+														<div>
+															<span className="meta-label">Expires</span>
+															<span className="meta-value">
+																{batch.expirationAt ? formatDateTime(batch.expirationAt) : '—'}
+															</span>
+														</div>
 													</div>
-													<div>
-														<span className="meta-label">Expires</span>
-														<span className="meta-value">
-															{batch.expirationAt ? formatDateTime(batch.expirationAt) : '—'}
-														</span>
-													</div>
-												</div>
-											</li>
-										))}
-									</ul>
+												</li>
+											))}
+										</ul>
+										{totalBatchesPages > 1 && (
+											<div className="pagination-controls">
+												<button
+													className="btn btn-secondary btn-small"
+													onClick={() => setOverviewBatchesPage((prev) => Math.max(1, prev - 1))}
+													disabled={overviewBatchesPage === 1}
+												>
+													Previous
+												</button>
+												<span className="pagination-info">
+													Page {overviewBatchesPage} of {totalBatchesPages} ({supplyBatches.length} total)
+												</span>
+												<button
+													className="btn btn-secondary btn-small"
+													onClick={() => setOverviewBatchesPage((prev) => Math.min(totalBatchesPages, prev + 1))}
+													disabled={overviewBatchesPage === totalBatchesPages}
+												>
+													Next
+												</button>
+											</div>
+										)}
+									</>
 								)}
 							</div>
 
@@ -1377,14 +1796,72 @@ export default function App() {
 								<div className="card-header">
 									<h3>Recent orders</h3>
 								</div>
-								{supplyOrdersLoading && recentOrders.length === 0 ? (
+								{supplyOrdersLoading && supplyOrders.length === 0 ? (
 									<div className="card-loading">Loading orders...</div>
 								) : supplyOrdersError ? (
 									<div className="card-error">{supplyOrdersError}</div>
-								) : recentOrders.length === 0 ? (
+								) : supplyOrders.length === 0 ? (
 									<div className="card-empty">No orders yet. Students will appear here once they reserve.</div>
 								) : (
-									renderOrders(recentOrders)
+									<>
+										<ul className="supply-list">
+											{recentOrders.map((order) => {
+												const status = (order.status || '').toLowerCase();
+												const isCollected = order.collectedAt || ['collected', 'completed'].includes(status);
+												const isCancelled = status === 'cancelled';
+												return (
+													<li key={order.id} className="supply-list-item">
+														<div>
+															<h4>{order.offeringTitle || 'Prasadam order'}</h4>
+															<p className="muted">
+																{order.userName && <span>Ordered by {order.userName} • </span>}
+																Placed {formatDateTime(order.createdAt)}
+															</p>
+														</div>
+														<div className="supply-list-meta">
+															<div>
+																<span className="meta-label">Status</span>
+																<span className={`meta-value status-badge ${getStatusColorClass(order.status)}`}>
+																	{formatStatus(order.status)}
+																</span>
+															</div>
+															<div>
+																<span className="meta-label">Reservation Fee</span>
+																<span className="meta-value">{formatCurrency(order.feeCents)}</span>
+															</div>
+															<div>
+																<span className="meta-label">Collected</span>
+																<span className="meta-value">
+																	{order.collectedAt ? formatDateTime(order.collectedAt) : 'Not yet'}
+																</span>
+															</div>
+														</div>
+													</li>
+												);
+											})}
+										</ul>
+										{totalOrdersPages > 1 && (
+											<div className="pagination-controls">
+												<button
+													className="btn btn-secondary btn-small"
+													onClick={() => setOverviewOrdersPage((prev) => Math.max(1, prev - 1))}
+													disabled={overviewOrdersPage === 1}
+												>
+													Previous
+												</button>
+												<span className="pagination-info">
+													Page {overviewOrdersPage} of {totalOrdersPages} ({supplyOrders.length} total)
+												</span>
+												<button
+													className="btn btn-secondary btn-small"
+													onClick={() => setOverviewOrdersPage((prev) => Math.min(totalOrdersPages, prev + 1))}
+													disabled={overviewOrdersPage === totalOrdersPages}
+												>
+													Next
+												</button>
+											</div>
+										)}
+									</>
 								)}
 							</div>
 						</div>
@@ -1551,6 +2028,17 @@ export default function App() {
 											placeholder="Volunteer reminders, ingredients, set-up instructions"
 										/>
 									</label>
+									<label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+										<input
+											type="checkbox"
+											checked={announcementForm.showNotesToStudents}
+											onChange={(e) => setAnnouncementForm((prev) => ({ ...prev, showNotesToStudents: e.target.checked }))}
+											style={{ width: 'auto', cursor: 'pointer' }}
+										/>
+										<span className="form-label" style={{ margin: 0, cursor: 'pointer' }}>
+											Show notes to students on announcements dashboard
+										</span>
+									</label>
 									<button type="submit" className="btn" disabled={futureOfferingsLoading}>
 										{futureOfferingsLoading ? 'Scheduling...' : 'Schedule announcement'}
 									</button>
@@ -1610,6 +2098,15 @@ export default function App() {
 																	setToast({ type: 'success', message: 'Offering published live.' });
 																	setPublishingOfferingId(null);
 																	setPublishForm({ quantity: '', feeCents: '' });
+																	// Delete the future offering from database
+																	try {
+																		await deleteFutureOffering(item.id, user.uid);
+																	} catch (deleteErr) {
+																		console.error('Error deleting future offering:', deleteErr);
+																		// Continue even if delete fails - we'll remove from UI anyway
+																	}
+																	// Remove the published announcement from scheduled offerings
+																	setFutureOfferings((prev) => prev.filter((announcement) => announcement.id !== item.id));
 																	await loadLiveOfferings(user.uid);
 																} else {
 																	setToast({ type: 'error', message: response?.error || 'Failed to publish offering' });
@@ -1730,16 +2227,26 @@ export default function App() {
 																return;
 															}
 															const statusValue = (editingOfferingForm.status || '').trim() || 'available';
+															
+															// Prepare update payload
+															const updatePayload = {
+																uid: user.uid,
+																availableQuantity: quantityValue,
+																status: statusValue,
+															};
+															
+															// Add availableAt if date/time is provided
+															const availableAtIso = isoFromDateTime(editingOfferingForm.availableDate, editingOfferingForm.availableTime);
+															if (availableAtIso) {
+																updatePayload.availableAt = availableAtIso;
+															}
+															
 															try {
-																const response = await updateSupplyOffering(offering.id, {
-																	uid: user.uid,
-																	availableQuantity: quantityValue,
-																	status: statusValue,
-																});
+																const response = await updateSupplyOffering(offering.id, updatePayload);
 																if (response?.success) {
 																	setToast({ type: 'success', message: 'Offering updated.' });
 																	setEditingOfferingId(null);
-																	setEditingOfferingForm({ quantity: '', status: '' });
+																	setEditingOfferingForm({ quantity: '', status: '', availableDate: '', availableTime: '' });
 																	await loadLiveOfferings(user.uid);
 																} else {
 																	setToast({ type: 'error', message: response?.error || 'Failed to update offering' });
@@ -1773,13 +2280,33 @@ export default function App() {
 																<option value="closed">Closed</option>
 															</select>
 														</div>
+														<div className="date-time-row">
+															<div className="profile-item">
+																<label className="profile-label">Available date</label>
+																<input
+																	type="date"
+																	className="input"
+																	value={editingOfferingForm.availableDate}
+																	onChange={(e) => setEditingOfferingForm((prev) => ({ ...prev, availableDate: e.target.value }))}
+																/>
+															</div>
+															<div className="profile-item">
+																<label className="profile-label">Available time</label>
+																<input
+																	type="time"
+																	className="input"
+																	value={editingOfferingForm.availableTime}
+																	onChange={(e) => setEditingOfferingForm((prev) => ({ ...prev, availableTime: e.target.value }))}
+																/>
+															</div>
+														</div>
 														<div className="profile-actions">
 															<button
 																type="button"
 																className="btn btn-secondary"
 																onClick={() => {
 																	setEditingOfferingId(null);
-																	setEditingOfferingForm({ quantity: '', status: '' });
+																	setEditingOfferingForm({ quantity: '', status: '', availableDate: '', availableTime: '' });
 																}}
 															>
 																Cancel
@@ -1790,18 +2317,33 @@ export default function App() {
 														</div>
 													</form>
 												) : (
-													<button
-														className="btn btn-secondary btn-small"
-														onClick={() => {
-															setEditingOfferingId(offering.id);
-															setEditingOfferingForm({
-																quantity: String(offering.availableQuantity ?? ''),
-																status: offering.status || 'available',
-															});
-														}}
-													>
-														Edit
-													</button>
+													<div className="supply-list-actions-group">
+														<button
+															className="btn btn-secondary btn-small"
+															onClick={() => {
+																setEditingOfferingId(offering.id);
+																// Format the availableAt date for the form inputs
+																const availableAt = offering.availableAt;
+																let dateValue = '';
+																let timeValue = '';
+																if (availableAt) {
+																	const date = availableAt instanceof Date ? availableAt : new Date(availableAt);
+																	if (!Number.isNaN(date.getTime())) {
+																		dateValue = date.toISOString().split('T')[0];
+																		timeValue = date.toTimeString().slice(0, 5);
+																	}
+																}
+																setEditingOfferingForm({
+																	quantity: String(offering.availableQuantity ?? ''),
+																	status: offering.status || 'available',
+																	availableDate: dateValue,
+																	availableTime: timeValue,
+																});
+															}}
+														>
+															Edit
+														</button>
+													</div>
 												)}
 											</div>
 											</li>
@@ -1818,6 +2360,37 @@ export default function App() {
 								<div className="card-header">
 									<h3>All orders</h3>
 								</div>
+								
+								{/* Search and Filter Controls */}
+								<div className="orders-filters">
+									<div className="search-input-wrapper">
+										<input
+											type="text"
+											className="input"
+											placeholder="Search by offering or student name..."
+											value={ordersSearchQuery}
+											onChange={(e) => {
+												setOrdersSearchQuery(e.target.value);
+												setOrdersCurrentPage(1); // Reset to first page when search changes
+											}}
+										/>
+									</div>
+									<select
+										className="input"
+										value={ordersStatusFilter}
+										onChange={(e) => {
+											setOrdersStatusFilter(e.target.value);
+											setOrdersCurrentPage(1); // Reset to first page when filter changes
+										}}
+										style={{ minWidth: '150px' }}
+									>
+										<option value="all">All Status</option>
+										<option value="pending">Pending</option>
+										<option value="collected">Collected</option>
+										<option value="cancelled">Cancelled</option>
+									</select>
+								</div>
+								
 								{supplyOrdersLoading && supplyOrders.length === 0 ? (
 									<div className="card-loading">Loading orders...</div>
 								) : supplyOrdersError ? (
@@ -1825,7 +2398,7 @@ export default function App() {
 								) : supplyOrders.length === 0 ? (
 									<div className="card-empty">No orders have been placed yet.</div>
 								) : (
-									renderOrders(supplyOrders)
+									renderOrders(ordersWithUserNames.length > 0 ? ordersWithUserNames : supplyOrders)
 								)}
 							</div>
 						</section>
@@ -1882,19 +2455,76 @@ export default function App() {
 									<form className="supply-form" onSubmit={handleValidateQrToken}>
 										<label>
 											<span className="form-label">Scan or enter QR token</span>
-											<input
-												type="text"
-												className="input"
-												value={qrTokenInput}
-												onChange={(e) => setQrTokenInput(e.target.value)}
-												placeholder="Paste token from QR scanner"
-											/>
+											<div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+												<input
+													type="text"
+													className="input"
+													value={qrTokenInput}
+													onChange={(e) => setQrTokenInput(e.target.value)}
+													placeholder="Paste token from QR scanner"
+													style={{ paddingRight: '45px', flex: 1 }}
+												/>
+												<button
+													type="button"
+													onClick={qrScannerActive ? handleStopQrScanner : handleStartQrScanner}
+													style={{
+														position: 'absolute',
+														right: '8px',
+														background: 'transparent',
+														border: 'none',
+														cursor: 'pointer',
+														padding: '4px',
+														display: 'flex',
+														alignItems: 'center',
+														justifyContent: 'center',
+														color: qrScannerActive ? 'var(--danger, #ef4444)' : 'var(--primary, #22d3ee)',
+													}}
+													title={qrScannerActive ? 'Stop camera' : 'Scan QR code with camera'}
+												>
+													<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+														{qrScannerActive ? (
+															<path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+														) : (
+															<>
+																<path d="M12 8V12M12 12V16M12 12H16M12 12H8" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+																<path d="M3 7C3 5.89543 3.89543 5 5 5H7M17 5H19C20.1046 5 21 5.89543 21 7V9M21 15V17C21 18.1046 20.1046 19 19 19H17M7 19H5C3.89543 19 3 18.1046 3 17V15" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+															</>
+														)}
+													</svg>
+												</button>
+											</div>
 										</label>
-										<button type="submit" className="btn" disabled={qrProcessing}>
+										{qrScanningError && <div className="card-error">{qrScanningError}</div>}
+										<button type="submit" className="btn" disabled={qrProcessing || qrScannerActive}>
 											{qrProcessing ? 'Validating...' : 'Validate code'}
 										</button>
 										{qrValidationError && <div className="card-error">{qrValidationError}</div>}
 									</form>
+									{qrScannerActive && (
+										<div className="qr-scanner-overlay">
+											<div className="qr-scanner-container">
+												<div className="qr-scanner-header">
+													<h4>Scan QR Code</h4>
+													<button
+														type="button"
+														onClick={handleStopQrScanner}
+														style={{
+															background: 'transparent',
+															border: 'none',
+															cursor: 'pointer',
+															color: 'var(--text)',
+															padding: '4px',
+														}}
+													>
+														<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+														</svg>
+													</button>
+												</div>
+												<div id="qr-reader" style={{ width: '100%' }}></div>
+											</div>
+										</div>
+									)}
 									{qrValidationResult && (
 										<div className="validated-order">
 											<h4>Order confirmed</h4>
@@ -2032,6 +2662,12 @@ export default function App() {
 						Home
 					</button>
 					<button
+						className={`nav-menu-item ${currentPage === 'orders' ? 'active' : ''}`}
+						onClick={() => setCurrentPage('orders')}
+					>
+						Orders
+					</button>
+					<button
 						className={`nav-menu-item ${currentPage === 'profile' ? 'active' : ''}`}
 						onClick={handleProfileClick}
 					>
@@ -2059,85 +2695,136 @@ export default function App() {
 					</header>
 
 					<div className="dashboard-grid">
+						{/* Available Prasadam Section with Carousel */}
 						<section className="dashboard-card offerings-card">
-						<div className="card-header">
-							<div>
-								<h2>Available Prasadam</h2>
-								<p className="muted">Tap order to reserve your portion instantly.</p>
+							<div className="card-header">
+								<div>
+									<h2>Available Prasadam</h2>
+									<p className="muted">Tap order to reserve your portion instantly.</p>
+								</div>
+								<span className="pill live-pill">Live</span>
 							</div>
-							<span className="pill live-pill">Live</span>
-						</div>
 
-						{offeringsLoading ? (
-							<div className="card-loading">Checking the kitchen...</div>
-						) : offeringsError ? (
-							<div className="card-error">{offeringsError}</div>
-						) : offerings.length === 0 ? (
-							<div className="card-empty">
-								No offerings right now. You&apos;ll get a ping the moment prasadam is ready!
-							</div>
-						) : (
-							<ul className="offering-list">
-										{offerings.map((offering) => {
-											const availableQuantity =
-												typeof offering.availableQuantity === 'number'
-													? offering.availableQuantity
-													: null;
-											const isAvailable =
-												['available', 'open'].includes((offering.status || '').toLowerCase()) &&
-												(availableQuantity === null || availableQuantity > 0);
+							{offeringsLoading ? (
+								<div className="card-loading">Checking the kitchen...</div>
+							) : offeringsError ? (
+								<div className="card-error">{offeringsError}</div>
+							) : (() => {
+								// Filter available offerings
+								const availableOfferings = offerings.filter((offering) => {
+									const availableQuantity =
+										typeof offering.availableQuantity === 'number'
+											? offering.availableQuantity
+											: null;
+									const isAvailable =
+										['available', 'open'].includes((offering.status || '').toLowerCase()) &&
+										(availableQuantity === null || availableQuantity > 0);
+									return isAvailable;
+								});
 
-											// Hide sold-out / unavailable offerings from the student list
-											if (!isAvailable) {
-												return null;
-											}
-
-											return (
-												<li key={offering.id} className="offering-item">
-											<div className="offering-header">
-												<h3>{offering.title}</h3>
-												<span className={`status-pill status-${isAvailable ? 'available' : 'closed'}`}>
-													{isAvailable ? 'Available' : 'Sold out'}
-												</span>
-											</div>
-											<p className="muted">{offering.description || 'Fresh prasadam from the kitchen.'}</p>
-											<div className="offering-meta">
-												<div>
-													<span className="meta-label">Available</span>
-													<span className="meta-value">{formatDateTime(offering.availableAt)}</span>
-												</div>
-												<div>
-													<span className="meta-label">Reservation Fee</span>
-													<span className="meta-value">{formatCurrency(offering.feeCents)}</span>
-												</div>
-												<div>
-													<span className="meta-label">Quantity</span>
-													<span className="meta-value">
-														{availableQuantity === null ? '—' : availableQuantity <= 0 ? 'None' : availableQuantity}
-													</span>
-												</div>
-											</div>
-											{offering.launchFeeRefund && (
-												<div className="note">Launch bonus: your reservation fee is refunded at pick-up.</div>
-											)}
-											<button
-												className="btn offering-btn"
-												disabled={!isAvailable || orderingOfferingId === offering.id}
-												onClick={() => handleOrder(offering)}
-											>
-												{orderingOfferingId === offering.id ? 'Reserving...' : 'Reserve now'}
-											</button>
-										</li>
+								if (availableOfferings.length === 0) {
+									return (
+										<div className="card-empty">
+											No offerings right now. You&apos;ll get a ping the moment prasadam is ready!
+										</div>
 									);
-								})}
-							</ul>
-						)}
-						{orderError && <div className="card-error">{orderError}</div>}
-					</section>
+								}
 
+								// Ensure currentOfferingIndex is within bounds
+								const safeIndex = Math.min(currentOfferingIndex, Math.max(0, availableOfferings.length - 1));
+								const currentOffering = availableOfferings[safeIndex];
+								const availableQuantity =
+									typeof currentOffering.availableQuantity === 'number'
+										? currentOffering.availableQuantity
+										: null;
 
-					{orders.length > 0 && (
-						<section className="dashboard-card orders-card">
+								return (
+									<div className="offerings-carousel">
+										<div className="carousel-container">
+											<div className="carousel-slide active">
+												<div className="offering-item">
+													<div className="offering-header">
+														<h3>{currentOffering.title}</h3>
+														<span className="status-pill status-available">
+															Available
+														</span>
+													</div>
+													<p className="muted">{currentOffering.description || 'Fresh prasadam from the kitchen.'}</p>
+													<div className="offering-meta">
+														<div>
+															<span className="meta-label">Available</span>
+															<span className="meta-value">{formatDateTime(currentOffering.availableAt)}</span>
+														</div>
+														<div>
+															<span className="meta-label">Reservation Fee</span>
+															<span className="meta-value">{formatCurrency(currentOffering.feeCents)}</span>
+														</div>
+														<div>
+															<span className="meta-label">Quantity</span>
+															<span className="meta-value">
+																{availableQuantity === null ? '—' : availableQuantity <= 0 ? 'None' : availableQuantity}
+															</span>
+														</div>
+													</div>
+													{currentOffering.launchFeeRefund && (
+														<div className="note">Launch bonus: your reservation fee is refunded at pick-up.</div>
+													)}
+													<button
+														className="btn offering-btn"
+														disabled={orderingOfferingId === currentOffering.id}
+														onClick={() => handleOrder(currentOffering)}
+													>
+														{orderingOfferingId === currentOffering.id ? 'Reserving...' : 'Reserve now'}
+													</button>
+												</div>
+											</div>
+										</div>
+
+										{availableOfferings.length > 1 && (
+											<div className="carousel-controls">
+												<button
+													className="carousel-btn carousel-btn-prev"
+													onClick={() => setCurrentOfferingIndex((prev) => (prev > 0 ? prev - 1 : availableOfferings.length - 1))}
+													aria-label="Previous offering"
+												>
+													<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+														<path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+													</svg>
+												</button>
+												<div className="carousel-indicators">
+													{availableOfferings.map((_, index) => (
+														<button
+															key={index}
+															className={`carousel-indicator ${index === safeIndex ? 'active' : ''}`}
+															onClick={() => setCurrentOfferingIndex(index)}
+															aria-label={`Go to offering ${index + 1}`}
+														/>
+													))}
+												</div>
+												<button
+													className="carousel-btn carousel-btn-next"
+													onClick={() => setCurrentOfferingIndex((prev) => (prev < availableOfferings.length - 1 ? prev + 1 : 0))}
+													aria-label="Next offering"
+												>
+													<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+														<path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+													</svg>
+												</button>
+											</div>
+										)}
+
+										<div className="carousel-counter">
+											{safeIndex + 1} of {availableOfferings.length}
+										</div>
+									</div>
+								);
+							})()}
+							{orderError && <div className="card-error">{orderError}</div>}
+						</section>
+
+						{/* Your Orders Section - Side by side with Available Prasadam */}
+						{orders.length > 0 && (
+							<section className="dashboard-card orders-card">
 							<div className="card-header">
 								<div>
 									<h2>Your Orders</h2>
@@ -2148,20 +2835,28 @@ export default function App() {
 								<div className="card-loading">Loading your orders...</div>
 							) : ordersError ? (
 								<div className="card-error">{ordersError}</div>
-							) : orders.length === 0 ? (
-								<div className="card-empty">You haven&apos;t made any reservations yet.</div>
-							) : (
-								<div className="orders-carousel">
-									{(() => {
-										// Filter out cancelled orders for display
-										const activeOrders = orders.filter((order) => {
-											const status = (order.status || '').toLowerCase();
-											return !['cancelled'].includes(status);
-										});
-										
-										// Group orders by offeringId and sum quantities
-										const groupedOrders = new Map();
-										activeOrders.forEach((order) => {
+							) : (() => {
+								// Only show pending orders in "Your Orders" section
+								const pendingOrders = orders.filter((order) => {
+									const status = (order.status || '').toLowerCase();
+									return ['pending', 'in-progress', 'processing'].includes(status);
+								});
+								
+								if (pendingOrders.length === 0) {
+									return (
+										<div className="card-empty">You don&apos;t have any pending orders.</div>
+									);
+								}
+								
+								// Continue with carousel rendering for pending orders
+								return (
+									<div className="orders-carousel">
+										{(() => {
+											const activeOrders = pendingOrders;
+											
+											// Group orders by offeringId and sum quantities
+											const groupedOrders = new Map();
+											activeOrders.forEach((order) => {
 											const key = order.offeringId || order.id;
 											if (groupedOrders.has(key)) {
 												const existing = groupedOrders.get(key);
@@ -2194,35 +2889,35 @@ export default function App() {
 											}
 										});
 										
-										const displayOrders = Array.from(groupedOrders.values());
-										
-										// Ensure currentOrderIndex is within bounds - use a safe index for display
-										const safeIndex = displayOrders.length > 0 
-											? Math.min(currentOrderIndex, Math.max(0, displayOrders.length - 1))
-											: 0;
-										
-										if (displayOrders.length === 0) {
+											const displayOrders = Array.from(groupedOrders.values());
+											
+											// Ensure currentOrderIndex is within bounds - use a safe index for display
+											const safeIndex = displayOrders.length > 0 
+												? Math.min(currentOrderIndex, Math.max(0, displayOrders.length - 1))
+												: 0;
+											
+											if (displayOrders.length === 0) {
+												return (
+													<div className="card-empty">You don&apos;t have any pending orders.</div>
+												);
+											}
+											
 											return (
-												<div className="card-empty">You haven&apos;t made any active reservations yet.</div>
-											);
-										}
-										
-										return (
-											<>
-												<div className="carousel-container">
-													{displayOrders.map((order, index) => {
-													const canCancel = order.status && 
+												<>
+													<div className="carousel-container">
+														{displayOrders.map((order, index) => {
+															const canCancel = order.status && 
 														!['collected', 'completed', 'cancelled', 'refunded'].includes(order.status.toLowerCase());
 													const isCancelling = cancellingOrderId === order.id;
-													const isActive = index === safeIndex;
-													if (!isActive) return null;
-													
-													return (
-														<div
-															key={order.id}
-															className={`carousel-slide ${isActive ? 'active' : ''}`}
-														>
-															<div className="order-item">
+															const isActive = index === safeIndex;
+															if (!isActive) return null;
+															
+															return (
+																<div
+																	key={order.id}
+																	className={`carousel-slide ${isActive ? 'active' : ''}`}
+																>
+																	<div className="order-item">
 																<div className="order-header-with-icon">
 																	<div>
 																		<h4>{order.offeringTitle || 'Prasadam order'}</h4>
@@ -2312,49 +3007,135 @@ export default function App() {
 												})}
 											</div>
 											
-													{displayOrders.length > 1 && (
-														<div className="carousel-controls">
+											{displayOrders.length > 1 && (
+												<div className="carousel-controls">
+													<button
+														className="carousel-btn carousel-btn-prev"
+														onClick={() => setCurrentOrderIndex((prev) => (prev > 0 ? prev - 1 : displayOrders.length - 1))}
+														aria-label="Previous order"
+													>
+														<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+														</svg>
+													</button>
+													<div className="carousel-indicators">
+														{displayOrders.map((_, index) => (
 															<button
-																className="carousel-btn carousel-btn-prev"
-																onClick={() => setCurrentOrderIndex((prev) => (prev > 0 ? prev - 1 : displayOrders.length - 1))}
-																aria-label="Previous order"
-															>
-																<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-																	<path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-																</svg>
-															</button>
-															<div className="carousel-indicators">
-																{displayOrders.map((_, index) => (
-																	<button
-																		key={index}
-																		className={`carousel-indicator ${index === safeIndex ? 'active' : ''}`}
-																		onClick={() => setCurrentOrderIndex(index)}
-																		aria-label={`Go to order ${index + 1}`}
-																	/>
-																))}
-															</div>
-															<button
-																className="carousel-btn carousel-btn-next"
-																onClick={() => setCurrentOrderIndex((prev) => (prev < displayOrders.length - 1 ? prev + 1 : 0))}
-																aria-label="Next order"
-															>
-																<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-																	<path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-																</svg>
-															</button>
-														</div>
-													)}
-													
-													<div className="carousel-counter">
-														{safeIndex + 1} of {displayOrders.length}
+																key={index}
+																className={`carousel-indicator ${index === safeIndex ? 'active' : ''}`}
+																onClick={() => setCurrentOrderIndex(index)}
+																aria-label={`Go to order ${index + 1}`}
+															/>
+														))}
 													</div>
-												</>
-										);
-									})()}
-								</div>
-							)}
+													<button
+														className="carousel-btn carousel-btn-next"
+														onClick={() => setCurrentOrderIndex((prev) => (prev < displayOrders.length - 1 ? prev + 1 : 0))}
+														aria-label="Next order"
+													>
+														<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+															<path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+														</svg>
+													</button>
+												</div>
+											)}
+											
+											<div className="carousel-counter">
+												{safeIndex + 1} of {displayOrders.length}
+											</div>
+										</>
+									);
+								})()}
+							</div>
+						);
+					})()}
 						</section>
-					)}
+						)}
+
+						{/* Announcements Section - Below Available Prasadam */}
+						<section className="dashboard-card announcements-card">
+							<div className="card-header">
+								<div>
+									<h2>Upcoming Announcements</h2>
+									<p className="muted">See what prasadam is coming soon.</p>
+								</div>
+							</div>
+							{announcementsLoading ? (
+								<div className="card-loading">Loading announcements...</div>
+							) : announcementsError ? (
+								<div className="card-error">{announcementsError}</div>
+							) : studentAnnouncements.length === 0 ? (
+								<div className="card-empty">
+									No upcoming announcements. Check back later!
+								</div>
+							) : (() => {
+								const totalAnnouncementsPages = Math.ceil(studentAnnouncements.length / announcementsPerPage);
+								const safeIndex = Math.min(announcementsCurrentPage - 1, Math.max(0, studentAnnouncements.length - 1));
+								const currentAnnouncement = studentAnnouncements[safeIndex];
+								
+								return (
+									<div className="announcements-carousel">
+										<div className="carousel-container">
+											<div className="carousel-slide active">
+												<div className="offering-item">
+													<div className="offering-header">
+														<h3>{currentAnnouncement.title}</h3>
+													</div>
+													<p className="muted">{currentAnnouncement.description || 'More details coming soon.'}</p>
+													<div className="offering-meta">
+														<div>
+															<span className="meta-label">Scheduled for</span>
+															<span className="meta-value">{formatDateTime(currentAnnouncement.scheduledAt)}</span>
+														</div>
+													</div>
+													{currentAnnouncement.notes && (
+														<div className="note">{currentAnnouncement.notes}</div>
+													)}
+												</div>
+											</div>
+										</div>
+
+										{studentAnnouncements.length > 1 && (
+											<div className="carousel-controls">
+												<button
+													className="carousel-btn carousel-btn-prev"
+													onClick={() => setAnnouncementsCurrentPage((prev) => (prev > 1 ? prev - 1 : totalAnnouncementsPages))}
+													aria-label="Previous announcement"
+												>
+													<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+														<path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+													</svg>
+												</button>
+												<div className="carousel-indicators">
+													{studentAnnouncements.map((_, index) => (
+														<button
+															key={index}
+															className={`carousel-indicator ${index === safeIndex ? 'active' : ''}`}
+															onClick={() => setAnnouncementsCurrentPage(index + 1)}
+															aria-label={`Go to announcement ${index + 1}`}
+														/>
+													))}
+												</div>
+												<button
+													className="carousel-btn carousel-btn-next"
+													onClick={() => setAnnouncementsCurrentPage((prev) => (prev < totalAnnouncementsPages ? prev + 1 : 1))}
+													aria-label="Next announcement"
+												>
+													<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+														<path d="M7.5 5L12.5 10L7.5 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+													</svg>
+												</button>
+											</div>
+										)}
+
+										<div className="carousel-counter">
+											{safeIndex + 1} of {studentAnnouncements.length}
+										</div>
+									</div>
+								);
+							})()}
+						</section>
+					</div>
 
 					{selectedOrder && (
 						<div className="modal-overlay" onClick={handleCloseOrderModal}>
@@ -2414,33 +3195,170 @@ export default function App() {
 						</div>
 					)}
 
-					{subscriptionActive && (
-						<section className="dashboard-card subscription-card">
-							<div className="card-header">
-								<h3>Your Subscription</h3>
-								<p className="muted">Manage your subscription status.</p>
-							</div>
-							<div className="subscription-details">
-								<p>
-									Subscription: {subscriptionActive ? 'Active' : 'Inactive'}
-									{subscriptionWaived && ' (Waived)'}
-								</p>
-								<p>
-									Renews on: {subscriptionRenewal ? formatDateTime(subscriptionRenewal) : 'N/A'}
-								</p>
-								<button
-									className="btn"
-									onClick={() => handleSubscription(subscriptionActive ? 'deactivate' : 'activate')}
-									disabled={subscriptionUpdating}
-								>
-									{subscriptionUpdating ? 'Updating...' : subscriptionActive ? 'Deactivate Subscription' : 'Activate Subscription'}
-								</button>
-								{subscriptionError && <div className="card-error">{subscriptionError}</div>}
-							</div>
-						</section>
-					)}
 				</div>
-			</div>
+			) : currentPage === 'orders' ? (
+				<div className="profile-page">
+					<header className="profile-page-header">
+						<h1>All Orders</h1>
+						<p className="muted">View all your order history</p>
+					</header>
+					<div className="profile-page-content">
+						<div className="dashboard-card">
+							<div className="card-header">
+								<h3>Your Orders</h3>
+							</div>
+							{ordersLoading ? (
+								<div className="card-loading">Loading orders...</div>
+							) : ordersError ? (
+								<div className="card-error">{ordersError}</div>
+							) : (() => {
+								// Show all orders (pending, cancelled, completed)
+								const allOrdersList = orders.map((order) => ({
+									...order,
+									offeringTitle: order.offeringTitle || getOfferingTitle(order.offeringId) || 'Prasadam order',
+									quantity: order.quantity || 1,
+									status: order.status || 'pending',
+									feeCents: order.feeCents || 0,
+								}));
+
+								// Calculate pagination
+								const totalPages = Math.ceil(allOrdersList.length / allOrdersPerPage);
+								const startIndex = (allOrdersCurrentPage - 1) * allOrdersPerPage;
+								const endIndex = startIndex + allOrdersPerPage;
+								const paginatedOrders = allOrdersList.slice(startIndex, endIndex);
+
+								// Reset to page 1 if current page is out of bounds
+								if (allOrdersCurrentPage > totalPages && totalPages > 0) {
+									setAllOrdersCurrentPage(1);
+								}
+
+								if (allOrdersList.length === 0) {
+									return (
+										<div className="card-empty">You haven&apos;t made any orders yet.</div>
+									);
+								}
+
+								return (
+									<>
+										<ul className="order-list">
+											{paginatedOrders.map((order) => {
+												const status = (order.status || '').toLowerCase();
+												return (
+													<li key={order.id} className="order-item">
+														<div className="order-header-with-icon">
+															<div>
+																<h4>{order.offeringTitle}</h4>
+																<p className="muted">Placed {formatDateTime(order.createdAt)}</p>
+															</div>
+															<button
+																className="order-details-icon-btn"
+																onClick={() => handleShowOrder(order)}
+																aria-label="View order details"
+																title="View details"
+															>
+																<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+																	<path d="M10 10C11.3807 10 12.5 8.88071 12.5 7.5C12.5 6.11929 11.3807 5 10 5C8.61929 5 7.5 6.11929 7.5 7.5C7.5 8.88071 8.61929 10 10 10Z" stroke="currentColor" strokeWidth="1.5"/>
+																	<path d="M10 15C13.866 15 17 12.866 17 9C17 5.13401 13.866 3 10 3C6.13401 3 3 5.13401 3 9C3 12.866 6.13401 15 10 15Z" stroke="currentColor" strokeWidth="1.5"/>
+																	<path d="M10 10V15" stroke="currentColor" strokeWidth="1.5"/>
+																</svg>
+															</button>
+														</div>
+														<div className="order-meta">
+															<div>
+																<span className="meta-label">Quantity</span>
+																<span className="meta-value">{order.quantity || 1}</span>
+															</div>
+															<div>
+																<span className="meta-label">Status</span>
+																<span className={`meta-value status-badge ${getStatusColorClass(order.status)}`}>
+																	{formatStatus(order.status)}
+																</span>
+															</div>
+															<div>
+																<span className="meta-label">Reservation Fee</span>
+																<span className="meta-value">{formatCurrency(order.feeCents)}</span>
+															</div>
+															<div>
+																<span className="meta-label">Refund</span>
+																<span className="meta-value">
+																	{order.feeRefundEligible ? 'Launch refund' : 'Non-refundable'}
+																</span>
+															</div>
+														</div>
+														{order.collectedAt && (
+															<div className="order-collected">
+																<span className="meta-label">Collected</span>
+																<span className="meta-value">{formatDateTime(order.collectedAt)}</span>
+															</div>
+														)}
+														{order.cancelledAt && (
+															<div className="order-collected">
+																<span className="meta-label">Cancelled</span>
+																<span className="meta-value">{formatDateTime(order.cancelledAt)}</span>
+															</div>
+														)}
+														{order.qrToken && (
+															<div className="order-qr">
+																<span className="meta-label">Pickup QR</span>
+																<div className="order-qr-code">
+																	<QRCode value={order.qrToken} size={96} />
+																</div>
+															</div>
+														)}
+													</li>
+												);
+											})}
+										</ul>
+										<div className="pagination-controls">
+											<div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
+												<label style={{ fontSize: '14px', color: 'var(--muted)' }}>
+													Items per page:
+												</label>
+												<select
+													className="input"
+													value={allOrdersPerPage}
+													onChange={(e) => {
+														const newPerPage = Number.parseInt(e.target.value, 10);
+														setAllOrdersPerPage(newPerPage);
+														setAllOrdersCurrentPage(1); // Reset to first page when changing items per page
+													}}
+													style={{ width: '80px', padding: '6px 8px' }}
+												>
+													<option value="1">1</option>
+													<option value="3">3</option>
+													<option value="5">5</option>
+													<option value="10">10</option>
+													<option value="20">20</option>
+												</select>
+											</div>
+											{totalPages > 1 && (
+												<div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+													<button
+														className="btn btn-secondary btn-small"
+														onClick={() => setAllOrdersCurrentPage((prev) => Math.max(1, prev - 1))}
+														disabled={allOrdersCurrentPage === 1}
+													>
+														Previous
+													</button>
+													<span className="pagination-info">
+														Page {allOrdersCurrentPage} of {totalPages} ({allOrdersList.length} total)
+													</span>
+													<button
+														className="btn btn-secondary btn-small"
+														onClick={() => setAllOrdersCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+														disabled={allOrdersCurrentPage === totalPages}
+													>
+														Next
+													</button>
+												</div>
+											)}
+										</div>
+									</>
+								);
+							})()}
+						</div>
+					</div>
+				</div>
 			) : (
 				<div className="profile-page">
 					<header className="profile-page-header">
@@ -2534,6 +3452,60 @@ export default function App() {
 							) : (
 								<div className="card-empty">Profile information unavailable.</div>
 							)}
+						</div>
+
+						{/* Subscription Card - Separate */}
+						{subscriptionActive && (
+							<div className="dashboard-card subscription-card">
+								<div className="card-header">
+									<h3>Your Subscription</h3>
+									<p className="muted">Manage your subscription status.</p>
+								</div>
+								<div className="subscription-details">
+									<p>
+										Subscription: {subscriptionActive ? 'Active' : 'Inactive'}
+										{subscriptionWaived && ' (Waived)'}
+									</p>
+									<p>
+										Renews on: {subscriptionRenewal ? formatDateTime(subscriptionRenewal) : 'N/A'}
+									</p>
+									<button
+										className="btn"
+										onClick={() => handleSubscription(subscriptionActive ? 'deactivate' : 'activate')}
+										disabled={subscriptionUpdating}
+									>
+										{subscriptionUpdating ? 'Updating...' : subscriptionActive ? 'Deactivate Subscription' : 'Activate Subscription'}
+									</button>
+									{subscriptionError && <div className="card-error">{subscriptionError}</div>}
+								</div>
+							</div>
+						)}
+					</div>
+				</div>
+			)}
+
+			{/* Confirmation Modal */}
+			{confirmModal && (
+				<div className="modal-overlay" onClick={confirmModal.onCancel}>
+					<div className="modal-content" onClick={(e) => e.stopPropagation()}>
+						<div className="modal-header">
+							<h3>{confirmModal.title || 'Confirm Action'}</h3>
+							<button className="modal-close-btn" onClick={confirmModal.onCancel} aria-label="Close">
+								<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+									<path d="M18 6L6 18M6 6L18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+								</svg>
+							</button>
+						</div>
+						<div className="modal-body">
+							<p>{confirmModal.message}</p>
+						</div>
+						<div className="modal-actions">
+							<button className="btn btn-secondary" onClick={confirmModal.onCancel}>
+								Cancel
+							</button>
+							<button className="btn btn-danger" onClick={confirmModal.onConfirm}>
+								{confirmModal.confirmText || 'Confirm'}
+							</button>
 						</div>
 					</div>
 				</div>

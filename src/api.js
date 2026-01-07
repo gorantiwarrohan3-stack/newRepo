@@ -206,6 +206,16 @@ export async function getFutureOfferings(uid) {
 }
 
 /**
+ * Supply owner: delete a future offering announcement
+ */
+export async function deleteFutureOffering(futureOfferingId, uid) {
+	return apiRequest(`/api/supply/future-offerings/${encodeURIComponent(futureOfferingId)}`, {
+		method: 'DELETE',
+		body: { uid },
+	});
+}
+
+/**
  * Supply owner: publish a future offering as a live offering
  */
 export async function publishFutureOffering(data) {
@@ -231,6 +241,16 @@ export async function updateSupplyOffering(offeringId, data) {
 	return apiRequest(`/api/supply/offerings/${encodeURIComponent(offeringId)}`, {
 		method: 'PUT',
 		body: data,
+	});
+}
+
+/**
+ * Supply owner: delete a live offering
+ */
+export async function deleteSupplyOffering(offeringId, uid) {
+	return apiRequest(`/api/supply/offerings/${encodeURIComponent(offeringId)}`, {
+		method: 'DELETE',
+		body: { uid },
 	});
 }
 
