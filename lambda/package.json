@@ -1,0 +1,10 @@
+{
+  "name": "prasadam-connect-lambda",
+  "version": "1.0.0",
+  "description": "AWS Lambda functions for Prasadam Connect",
+  "devDependencies": {
+    "serverless-python-requirements": "^6.0.0",
+    "serverless-offline": "^13.0.0"
+  }
+}
+

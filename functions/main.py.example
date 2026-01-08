@@ -1,0 +1,258 @@
+"""
+Firebase Functions for Prasadam Connect
+Converted from Flask to Firebase Functions
+"""
+import os
+import json
+import uuid
+from datetime import datetime, timezone, timedelta
+from google.cloud import functions_v2
+import functions_framework
+from firebase_admin import initialize_app, credentials, firestore
+import firebase_admin
+
+# Initialize Firebase Admin SDK (only once)
+if not firebase_admin._apps:
+    # Firebase Functions automatically provides Application Default Credentials
+    # No need for service account key file in production
+    initialize_app()
+
+db = firestore.client()
+
+
+def serialize_timestamp(value):
+    """Convert Firestore timestamp/datetime to ISO 8601 string."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat()
+    if hasattr(value, "timestamp"):
+        return datetime.fromtimestamp(value.timestamp(), tz=timezone.utc).isoformat()
+    return value
+
+
+def parse_iso_datetime(value, *, assume_utc=True):
+    """Parse an ISO-8601 datetime string into a timezone-aware datetime."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            value = value.replace('Z', '+00:00')
+            dt = datetime.fromisoformat(value)
+        except Exception:
+            return None
+    if dt.tzinfo is None and assume_utc:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def cors_headers():
+    """Return CORS headers for responses."""
+    return {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
+        'Access-Control-Max-Age': '3600'
+    }
+
+
+@functions_framework.http
+def api(request):
+    """
+    Main HTTP function that routes requests to specific handlers.
+    Firebase Functions can handle routing via path.
+    """
+    # Handle CORS preflight
+    if request.method == 'OPTIONS':
+        return ('', 204, cors_headers())
+    
+    path = request.path.strip('/')
+    method = request.method
+    
+    # Route to appropriate handler
+    if path == 'health' or path == 'api/health':
+        return health_check(request)
+    elif path.startswith('api/create-user-with-login'):
+        return create_user_with_login(request)
+    elif path.startswith('api/user/'):
+        uid = path.split('/')[-1]
+        if method == 'GET':
+            return get_user_profile(request, uid)
+        elif method == 'PUT':
+            return update_user_profile(request, uid)
+    # Add more routes as needed...
+    else:
+        return (json.dumps({'error': 'Not found'}), 404, {'Content-Type': 'application/json', **cors_headers()})
+
+
+def health_check(request):
+    """Health check endpoint"""
+    response_data = {'status': 'healthy', 'service': 'prasadam-connect-api'}
+    return (json.dumps(response_data), 200, {'Content-Type': 'application/json', **cors_headers()})
+
+
+def create_user_with_login(request):
+    """
+    Create user and record login history (example conversion from Flask).
+    POST /api/create-user-with-login
+    """
+    if request.method != 'POST':
+        return (json.dumps({'error': 'Method not allowed'}), 405, {'Content-Type': 'application/json', **cors_headers()})
+    
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        # Validate required fields
+        required_fields = ['uid', 'name', 'email', 'phoneNumber', 'address']
+        for field in required_fields:
+            if not data.get(field):
+                return (
+                    json.dumps({'success': False, 'error': f'Missing required field: {field}'}),
+                    400,
+                    {'Content-Type': 'application/json', **cors_headers()}
+                )
+        
+        uid = data['uid']
+        name = data['name'].strip()
+        email = data['email'].strip().lower()
+        phone_number = data['phoneNumber'].strip()
+        address = data['address'].strip()
+        
+        # Use Firestore transaction
+        @firestore.transactional
+        def create_user_transaction(transaction):
+            user_ref = db.collection('users').document(uid)
+            login_ref = db.collection('loginHistory').document()
+            
+            # Check if user already exists
+            if user_ref.get().exists:
+                raise ValueError('User already exists')
+            
+            # Create user document
+            user_data = {
+                'uid': uid,
+                'name': name,
+                'email': email,
+                'phoneNumber': phone_number,
+                'address': address,
+                'role': 'student',  # default role
+                'createdAt': firestore.SERVER_TIMESTAMP,
+                'updatedAt': firestore.SERVER_TIMESTAMP,
+            }
+            transaction.set(user_ref, user_data)
+            
+            # Record login history
+            login_data = {
+                'uid': uid,
+                'loginTime': firestore.SERVER_TIMESTAMP,
+                'ipAddress': request.headers.get('X-Forwarded-For', 'unknown'),
+            }
+            transaction.set(login_ref, login_data)
+            
+            return user_data
+        
+        transaction = db.transaction()
+        user_data = create_user_transaction(transaction)
+        
+        return (
+            json.dumps({'success': True, 'user': user_data}),
+            201,
+            {'Content-Type': 'application/json', **cors_headers()}
+        )
+        
+    except ValueError as e:
+        return (
+            json.dumps({'success': False, 'error': str(e)}),
+            400,
+            {'Content-Type': 'application/json', **cors_headers()}
+        )
+    except Exception as e:
+        return (
+            json.dumps({'success': False, 'error': str(e)}),
+            500,
+            {'Content-Type': 'application/json', **cors_headers()}
+        )
+
+
+def get_user_profile(request, uid):
+    """GET /api/user/<uid>"""
+    try:
+        user_ref = db.collection('users').document(uid)
+        doc = user_ref.get()
+        
+        if not doc.exists:
+            return (
+                json.dumps({'success': False, 'error': 'User not found'}),
+                404,
+                {'Content-Type': 'application/json', **cors_headers()}
+            )
+        
+        user_data = doc.to_dict()
+        user_data['createdAt'] = serialize_timestamp(user_data.get('createdAt'))
+        user_data['updatedAt'] = serialize_timestamp(user_data.get('updatedAt'))
+        
+        return (
+            json.dumps({'success': True, 'user': user_data}),
+            200,
+            {'Content-Type': 'application/json', **cors_headers()}
+        )
+    except Exception as e:
+        return (
+            json.dumps({'success': False, 'error': str(e)}),
+            500,
+            {'Content-Type': 'application/json', **cors_headers()}
+        )
+
+
+def update_user_profile(request, uid):
+    """PUT /api/user/<uid>"""
+    if request.method != 'PUT':
+        return (json.dumps({'error': 'Method not allowed'}), 405, {'Content-Type': 'application/json', **cors_headers()})
+    
+    try:
+        data = request.get_json(silent=True) or {}
+        
+        user_ref = db.collection('users').document(uid)
+        doc = user_ref.get()
+        
+        if not doc.exists:
+            return (
+                json.dumps({'success': False, 'error': 'User not found'}),
+                404,
+                {'Content-Type': 'application/json', **cors_headers()}
+            )
+        
+        # Update allowed fields
+        update_data = {
+            'updatedAt': firestore.SERVER_TIMESTAMP,
+        }
+        
+        if 'name' in data:
+            update_data['name'] = data['name'].strip()
+        if 'email' in data:
+            update_data['email'] = data['email'].strip().lower()
+        if 'address' in data:
+            update_data['address'] = data['address'].strip()
+        
+        user_ref.update(update_data)
+        updated_doc = user_ref.get()
+        user_data = updated_doc.to_dict()
+        user_data['createdAt'] = serialize_timestamp(user_data.get('createdAt'))
+        user_data['updatedAt'] = serialize_timestamp(user_data.get('updatedAt'))
+        
+        return (
+            json.dumps({'success': True, 'user': user_data}),
+            200,
+            {'Content-Type': 'application/json', **cors_headers()}
+        )
+    except Exception as e:
+        return (
+            json.dumps({'success': False, 'error': str(e)}),
+            500,
+            {'Content-Type': 'application/json', **cors_headers()}
+        )
+

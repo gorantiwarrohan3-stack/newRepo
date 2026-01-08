@@ -77,3 +77,62 @@ Thumbs.db
 *.tmp
 *.temp
 create_branch.sh
+
+# Serverless Framework
+.serverless/
+.serverless/**
+*.zip
+.requirements.zip
+
+# AWS Lambda
+lambda/__pycache__/
+lambda/*.pyc
+
+# AWS credentials
+.aws/
+aws-exports.js
+
+# Deployment artifacts
+*.zip
+.requirements/
+.python/
+packages/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+serverless.log
+
+# Cache directories
+.cache/
+.parcel-cache/
+.eslintcache
+.nyc_output
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# Environment files (make sure these are excluded)
+.env
+.env.*
+!.env.example
+
+# Deployment guides (optional - keeping these for reference)
+# DEPLOY.md
+# DOCKER_SETUP.md
+# FIX_IAM_PERMISSIONS.md
+# FIX_S3_PERMISSIONS.md
+# PACKAGE_SIZE_FIX.md
+WARP.md

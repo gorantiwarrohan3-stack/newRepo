@@ -1,0 +1,75 @@
+service: prasadam-connect-api
+
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  runtime: python3.11
+  region: us-east-1  # Change to your preferred region
+  stage: ${opt:stage, 'dev'}
+  timeout: 30
+  memorySize: 512
+  environment:
+    FIREBASE_SECRET_NAME: firebase/service-account-key
+    FIREBASE_PROJECT_ID: ${env:FIREBASE_PROJECT_ID, ''}
+  iam:
+    role:
+      statements:
+        # Allow Lambda to access Secrets Manager for Firebase credentials
+        - Effect: Allow
+          Action:
+            - secretsmanager:GetSecretValue
+          Resource:
+            - arn:aws:secretsmanager:${self:provider.region}:*:secret:firebase/service-account-key*
+  
+functions:
+  api:
+    handler: lambda/handler.handler
+    package:
+      individually: true
+      patterns:
+        - '!node_modules/**'
+        - '!__pycache__/**'
+        - '!*.pyc'
+        - '!.git/**'
+        - '!.serverless/**'
+        - '!requirements/**'
+        - '!**/tests/**'
+        - '!**/test/**'
+        - '!**/*.dist-info/**'
+    events:
+      # API Gateway REST API
+      - http:
+          path: /{proxy+}
+          method: ANY
+          cors: true
+      - http:
+          path: /
+          method: ANY
+          cors: true
+
+plugins:
+  - serverless-python-requirements
+
+custom:
+  pythonRequirements:
+    dockerizePip: non-linux
+    layer: false
+    slim: true
+    pythonBin: python3
+    zip: true
+    strip: true
+    noDeploy:
+      - boto3
+      - botocore
+    pipCmdExtraArgs:
+      - --no-cache-dir
+    slimPatterns:
+      - '**/*.py[c|o]'
+      - '**/__pycache__/**'
+      - '**/tests/**'
+      - '**/test/**'
+      - '**/*.dist-info/**'
+      - '**/docs/**'
+      - '**/doc/**'
+

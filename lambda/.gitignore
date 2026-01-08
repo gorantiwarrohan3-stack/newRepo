@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+*.egg-info/
+.pytest_cache/
+
+# AWS
+.aws-sam/
+*.zip
+
+# IDE
+.vscode/
+.idea/
+
+# Environment
+.env
+*.local
+
