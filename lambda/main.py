@@ -714,10 +714,8 @@ def list_offerings(event, context, query_params):
         for doc in docs:
             data = doc.to_dict()
             data['id'] = doc.id
-            if 'availableAt' in data:
-                data['availableAt'] = serialize_timestamp(data.get('availableAt'))
-            if 'updatedAt' in data:
-                data['updatedAt'] = serialize_timestamp(data.get('updatedAt'))
+            # Recursively serialize all datetime fields
+            data = serialize_data_recursive(data)
             offerings.append(data)
         
         return lambda_response({
@@ -866,8 +864,8 @@ def list_orders_for_user(event, context, uid):
                 data = doc.to_dict()
                 if data:
                     data['id'] = doc.id
-                    data['createdAt'] = serialize_timestamp(data.get('createdAt'))
-                    data['updatedAt'] = serialize_timestamp(data.get('updatedAt'))
+                    # Recursively serialize all datetime fields
+                    data = serialize_data_recursive(data)
                     orders.append(data)
             except Exception as doc_error:
                 print(f"Warning: Error processing order document {doc.id}: {str(doc_error)}")
@@ -1225,9 +1223,8 @@ def list_supply_batches(event, context, uid):
         for doc in docs:
             data = doc.to_dict() or {}
             data['id'] = doc.id
-            data['createdAt'] = serialize_timestamp(data.get('createdAt'))
-            data['updatedAt'] = serialize_timestamp(data.get('updatedAt'))
-            data['expirationAt'] = serialize_timestamp(data.get('expirationAt'))
+            # Recursively serialize all datetime fields
+            data = serialize_data_recursive(data)
             batches.append(data)
         
         if batches:
@@ -1314,9 +1311,8 @@ def list_future_offerings(event, context, uid):
         for doc in docs:
             data = doc.to_dict() or {}
             data['id'] = doc.id
-            data['createdAt'] = serialize_timestamp(data.get('createdAt'))
-            data['updatedAt'] = serialize_timestamp(data.get('updatedAt'))
-            data['scheduledAt'] = serialize_timestamp(data.get('scheduledAt'))
+            # Recursively serialize all datetime fields
+            data = serialize_data_recursive(data)
             announcements.append(data)
         
         if announcements:
@@ -1447,9 +1443,8 @@ def list_supply_offerings(event, context, uid):
         for doc in docs:
             data = doc.to_dict() or {}
             data['id'] = doc.id
-            data['createdAt'] = serialize_timestamp(data.get('createdAt'))
-            data['updatedAt'] = serialize_timestamp(data.get('updatedAt'))
-            data['availableAt'] = serialize_timestamp(data.get('availableAt'))
+            # Recursively serialize all datetime fields
+            data = serialize_data_recursive(data)
             offerings.append(data)
         
         if offerings:
@@ -1743,8 +1738,8 @@ def list_custom_qr(event, context, uid):
             data = doc.to_dict() or {}
             data['id'] = doc.id
             data['qrToken'] = data.get('qrToken', doc.id)
-            data['createdAt'] = serialize_timestamp(data.get('createdAt'))
-            data['expiresAt'] = serialize_timestamp(data.get('expiresAt'))
+            # Recursively serialize all datetime fields
+            data = serialize_data_recursive(data)
             qr_codes.append(data)
         
         return lambda_response({'success': True, 'qrCodes': qr_codes, 'count': len(qr_codes)})
