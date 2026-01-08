@@ -83,6 +83,14 @@ def serialize_timestamp(value):
     """Convert Firestore timestamp/datetime to ISO 8601 string."""
     if value is None:
         return None
+    # Handle DatetimeWithNanoseconds (Firestore type)
+    if hasattr(value, "timestamp") and hasattr(value, "nanosecond"):
+        try:
+            # Convert DatetimeWithNanoseconds to datetime
+            dt = datetime.fromtimestamp(value.timestamp(), tz=timezone.utc)
+            return dt.isoformat()
+        except:
+            pass
     if isinstance(value, datetime):
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
@@ -90,6 +98,22 @@ def serialize_timestamp(value):
     if hasattr(value, "timestamp"):
         return datetime.fromtimestamp(value.timestamp(), tz=timezone.utc).isoformat()
     return value
+
+
+def serialize_data_recursive(data):
+    """Recursively serialize datetime objects in a data structure."""
+    if data is None:
+        return None
+    if isinstance(data, dict):
+        return {key: serialize_data_recursive(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [serialize_data_recursive(item) for item in data]
+    else:
+        # Try to serialize if it's a datetime-like object
+        serialized = serialize_timestamp(data)
+        if serialized != data:
+            return serialized
+        return data
 
 
 def parse_iso_datetime(value, assume_utc=True):
@@ -1625,9 +1649,8 @@ def supply_orders(event, context, uid, query_params):
         for doc in docs:
             data = doc.to_dict() or {}
             data['id'] = doc.id
-            data['createdAt'] = serialize_timestamp(data.get('createdAt'))
-            data['updatedAt'] = serialize_timestamp(data.get('updatedAt'))
-            data['collectedAt'] = serialize_timestamp(data.get('collectedAt'))
+            # Recursively serialize all datetime fields
+            data = serialize_data_recursive(data)
             orders.append(data)
         
         if orders:
