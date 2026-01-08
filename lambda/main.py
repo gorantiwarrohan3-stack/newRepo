@@ -83,20 +83,38 @@ def serialize_timestamp(value):
     """Convert Firestore timestamp/datetime to ISO 8601 string."""
     if value is None:
         return None
-    # Handle DatetimeWithNanoseconds (Firestore type)
-    if hasattr(value, "timestamp") and hasattr(value, "nanosecond"):
+    
+    # Handle DatetimeWithNanoseconds (Firestore type) - check by class name or attributes
+    value_type_name = type(value).__name__
+    if value_type_name == 'DatetimeWithNanoseconds' or (hasattr(value, "timestamp") and hasattr(value, "nanosecond")):
         try:
             # Convert DatetimeWithNanoseconds to datetime
-            dt = datetime.fromtimestamp(value.timestamp(), tz=timezone.utc)
+            ts = value.timestamp()
+            dt = datetime.fromtimestamp(ts, tz=timezone.utc)
             return dt.isoformat()
-        except:
-            pass
+        except Exception as e:
+            # If timestamp() fails, try alternative methods
+            try:
+                # Try converting via seconds and nanoseconds
+                if hasattr(value, 'seconds') and hasattr(value, 'nanoseconds'):
+                    dt = datetime.fromtimestamp(value.seconds + value.nanoseconds / 1e9, tz=timezone.utc)
+                    return dt.isoformat()
+            except:
+                pass
+    
     if isinstance(value, datetime):
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
         return value.astimezone(timezone.utc).isoformat()
+    
+    # Handle any object with a timestamp method
     if hasattr(value, "timestamp"):
-        return datetime.fromtimestamp(value.timestamp(), tz=timezone.utc).isoformat()
+        try:
+            ts = value.timestamp()
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except:
+            pass
+    
     return value
 
 
@@ -110,8 +128,10 @@ def serialize_data_recursive(data):
         return [serialize_data_recursive(item) for item in data]
     else:
         # Try to serialize if it's a datetime-like object
+        original = data
         serialized = serialize_timestamp(data)
-        if serialized != data:
+        # Only return serialized if it actually changed
+        if serialized != original:
             return serialized
         return data
 
