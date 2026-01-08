@@ -37,6 +37,9 @@ functions:
         - '!**/tests/**'
         - '!**/test/**'
         - '!**/*.dist-info/**'
+        - '!.python/**'
+        - '**/.python/**'
+        - '!requirements.txt.zip'
     events:
       # API Gateway REST API
       - http:
@@ -84,4 +87,6 @@ custom:
       - '**/*.dist-info/**'
       - '**/docs/**'
       - '**/doc/**'
+    fileName: requirements.txt
+    dockerImage: public.ecr.aws/sam/build-python3.11:latest
 
