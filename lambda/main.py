@@ -190,73 +190,73 @@ def handler(event, context):
             return register_user(event, context, body)
         elif path == '/api/check-user' and method == 'POST':
             return check_user(event, context, body)
-    elif path == '/api/login-history' and method == 'POST':
-        return record_login(event, context, body)
-    elif '/api/login-history/' in path and method == 'GET':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return get_login_history(event, context, uid, query_params)
-    elif '/api/user/' in path and method == 'GET':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return get_user_profile(event, context, uid)
-    elif '/api/user/' in path and method == 'PUT':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return update_user_profile(event, context, uid, body)
-    elif path == '/api/create-user-with-login' and method == 'POST':
-        return create_user_with_login(event, context, body)
-    elif path == '/api/offerings' and method == 'GET':
-        return list_offerings(event, context, query_params)
-    elif path == '/api/orders' and method == 'POST':
-        return create_order(event, context, body)
-    elif '/api/orders/' in path and method == 'GET' and '/cancel' not in path:
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return list_orders_for_user(event, context, uid)
-    elif '/api/orders/' in path and '/cancel' in path and method == 'POST':
-        order_id = path_params.get('order_id') or path.split('/')[-2]
-        return cancel_order(event, context, order_id, body)
-    elif path == '/api/orders/validate' and method == 'POST':
-        return validate_order_qr(event, context, body)
-    elif path == '/api/subscription' and method == 'POST':
-        return update_subscription(event, context, body)
-    elif path == '/api/unregister' and method == 'POST':
-        return unregister_user(event, context, body)
-    # Supply owner routes
-    elif path == '/api/supply/batches' and method == 'POST':
-        return create_supply_batch(event, context, body)
-    elif '/api/supply/batches/' in path and method == 'GET':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return list_supply_batches(event, context, uid)
-    elif path == '/api/supply/future-offerings' and method == 'POST':
-        return create_future_offering(event, context, body)
-    elif '/api/supply/future-offerings/' in path and method == 'GET':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return list_future_offerings(event, context, uid)
-    elif '/api/supply/future-offerings/' in path and method == 'DELETE':
-        future_offering_id = path_params.get('future_offering_id') or path.split('/')[-1]
-        return delete_future_offering(event, context, future_offering_id, body)
-    elif path == '/api/supply/offerings/publish' and method == 'POST':
-        return publish_offering_from_future(event, context, body)
-    elif '/api/supply/offerings/' in path and method == 'GET':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return list_supply_offerings(event, context, uid)
-    elif '/api/supply/offerings/' in path and method == 'PUT':
-        offering_id = path_params.get('offering_id') or path.split('/')[-1]
-        return update_supply_offering(event, context, offering_id, body)
-    elif '/api/supply/offerings/' in path and method == 'DELETE':
-        offering_id = path_params.get('offering_id') or path.split('/')[-1]
-        return delete_supply_offering(event, context, offering_id, body)
-    elif '/api/supply/analytics/' in path and method == 'GET':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return supply_analytics(event, context, uid)
-    elif '/api/supply/orders/' in path and method == 'GET':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return supply_orders(event, context, uid, query_params)
-    elif path == '/api/qrcodes' and method == 'POST':
-        return create_custom_qr(event, context, body)
-    elif '/api/qrcodes/' in path and method == 'GET':
-        uid = path_params.get('uid') or path.split('/')[-1]
-        return list_custom_qr(event, context, uid)
-    else:
-        return lambda_response({'error': 'Not found', 'path': path, 'method': method}, 404)
+        elif path == '/api/login-history' and method == 'POST':
+            return record_login(event, context, body)
+        elif '/api/login-history/' in path and method == 'GET':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return get_login_history(event, context, uid, query_params)
+        elif '/api/user/' in path and method == 'GET':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return get_user_profile(event, context, uid)
+        elif '/api/user/' in path and method == 'PUT':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return update_user_profile(event, context, uid, body)
+        elif path == '/api/create-user-with-login' and method == 'POST':
+            return create_user_with_login(event, context, body)
+        elif path == '/api/offerings' and method == 'GET':
+            return list_offerings(event, context, query_params)
+        elif path == '/api/orders' and method == 'POST':
+            return create_order(event, context, body)
+        elif '/api/orders/' in path and method == 'GET' and '/cancel' not in path:
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return list_orders_for_user(event, context, uid)
+        elif '/api/orders/' in path and '/cancel' in path and method == 'POST':
+            order_id = path_params.get('order_id') or path.split('/')[-2]
+            return cancel_order(event, context, order_id, body)
+        elif path == '/api/orders/validate' and method == 'POST':
+            return validate_order_qr(event, context, body)
+        elif path == '/api/subscription' and method == 'POST':
+            return update_subscription(event, context, body)
+        elif path == '/api/unregister' and method == 'POST':
+            return unregister_user(event, context, body)
+        # Supply owner routes
+        elif path == '/api/supply/batches' and method == 'POST':
+            return create_supply_batch(event, context, body)
+        elif '/api/supply/batches/' in path and method == 'GET':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return list_supply_batches(event, context, uid)
+        elif path == '/api/supply/future-offerings' and method == 'POST':
+            return create_future_offering(event, context, body)
+        elif '/api/supply/future-offerings/' in path and method == 'GET':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return list_future_offerings(event, context, uid)
+        elif '/api/supply/future-offerings/' in path and method == 'DELETE':
+            future_offering_id = path_params.get('future_offering_id') or path.split('/')[-1]
+            return delete_future_offering(event, context, future_offering_id, body)
+        elif path == '/api/supply/offerings/publish' and method == 'POST':
+            return publish_offering_from_future(event, context, body)
+        elif '/api/supply/offerings/' in path and method == 'GET':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return list_supply_offerings(event, context, uid)
+        elif '/api/supply/offerings/' in path and method == 'PUT':
+            offering_id = path_params.get('offering_id') or path.split('/')[-1]
+            return update_supply_offering(event, context, offering_id, body)
+        elif '/api/supply/offerings/' in path and method == 'DELETE':
+            offering_id = path_params.get('offering_id') or path.split('/')[-1]
+            return delete_supply_offering(event, context, offering_id, body)
+        elif '/api/supply/analytics/' in path and method == 'GET':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return supply_analytics(event, context, uid)
+        elif '/api/supply/orders/' in path and method == 'GET':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return supply_orders(event, context, uid, query_params)
+        elif path == '/api/qrcodes' and method == 'POST':
+            return create_custom_qr(event, context, body)
+        elif '/api/qrcodes/' in path and method == 'GET':
+            uid = path_params.get('uid') or path.split('/')[-1]
+            return list_custom_qr(event, context, uid)
+        else:
+            return lambda_response({'error': 'Not found', 'path': path, 'method': method}, 404)
     except Exception as e:
         # Ensure CORS headers are always included, even on unhandled exceptions
         print(f"Unhandled error in handler: {str(e)}")
