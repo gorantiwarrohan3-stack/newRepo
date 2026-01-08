@@ -676,9 +676,8 @@ def get_login_history(event, context, uid, query_params):
         for doc in docs:
             data = doc.to_dict()
             data['id'] = doc.id
-            if 'timestamp' in data and data['timestamp']:
-                if hasattr(data['timestamp'], 'timestamp'):
-                    data['timestamp'] = data['timestamp'].timestamp()
+            # Recursively serialize all datetime fields
+            data = serialize_data_recursive(data)
             history.append(data)
         
         return lambda_response({
@@ -816,8 +815,8 @@ def create_order(event, context, data):
         order_doc = order_ref.get()
         order_payload = order_doc.to_dict() or {}
         order_payload['id'] = order_doc.id
-        order_payload['createdAt'] = serialize_timestamp(order_payload.get('createdAt'))
-        order_payload['updatedAt'] = serialize_timestamp(order_payload.get('updatedAt'))
+        # Recursively serialize all datetime fields
+        order_payload = serialize_data_recursive(order_payload)
         
         return lambda_response({
             'success': True,
@@ -973,9 +972,8 @@ def cancel_order(event, context, order_id, data):
         updated_doc = order_ref.get()
         updated_data = updated_doc.to_dict() or {}
         updated_data['id'] = updated_doc.id
-        updated_data['createdAt'] = serialize_timestamp(updated_data.get('createdAt'))
-        updated_data['updatedAt'] = serialize_timestamp(updated_data.get('updatedAt'))
-        updated_data['cancelledAt'] = serialize_timestamp(updated_data.get('cancelledAt'))
+        # Recursively serialize all datetime fields
+        updated_data = serialize_data_recursive(updated_data)
         
         return lambda_response({
             'success': True,
@@ -1037,9 +1035,8 @@ def validate_order_qr(event, context, data):
         updated_doc = order_doc.reference.get()
         payload = updated_doc.to_dict() or {}
         payload['id'] = updated_doc.id
-        payload['createdAt'] = serialize_timestamp(payload.get('createdAt'))
-        payload['updatedAt'] = serialize_timestamp(payload.get('updatedAt'))
-        payload['collectedAt'] = serialize_timestamp(payload.get('collectedAt'))
+        # Recursively serialize all datetime fields
+        payload = serialize_data_recursive(payload)
         
         return lambda_response({
             'success': True,
@@ -1105,8 +1102,8 @@ def update_subscription(event, context, data):
             'updatedAt': firestore.SERVER_TIMESTAMP,
         })
         
-        updated_subscription['activatedAt'] = serialize_timestamp(updated_subscription.get('activatedAt'))
-        updated_subscription['renewsAt'] = serialize_timestamp(updated_subscription.get('renewsAt'))
+        # Recursively serialize all datetime fields
+        updated_subscription = serialize_data_recursive(updated_subscription)
         
         return lambda_response({
             'success': True,
@@ -1279,9 +1276,8 @@ def create_future_offering(event, context, data):
         doc = doc_ref.get()
         payload = doc.to_dict() or {}
         payload['id'] = doc.id
-        payload['createdAt'] = serialize_timestamp(payload.get('createdAt'))
-        payload['updatedAt'] = serialize_timestamp(payload.get('updatedAt'))
-        payload['scheduledAt'] = serialize_timestamp(payload.get('scheduledAt'))
+        # Recursively serialize all datetime fields
+        payload = serialize_data_recursive(payload)
         
         return lambda_response({'success': True, 'announcement': payload}, 201)
     except Exception as e:
@@ -1411,9 +1407,8 @@ def publish_offering_from_future(event, context, data):
         created_doc = offering_ref.get()
         payload = created_doc.to_dict() or {}
         payload['id'] = created_doc.id
-        payload['createdAt'] = serialize_timestamp(payload.get('createdAt'))
-        payload['updatedAt'] = serialize_timestamp(payload.get('updatedAt'))
-        payload['availableAt'] = serialize_timestamp(payload.get('availableAt'))
+        # Recursively serialize all datetime fields
+        payload = serialize_data_recursive(payload)
         
         return lambda_response({'success': True, 'offering': payload}, 201)
     except Exception as e:
@@ -1515,9 +1510,8 @@ def update_supply_offering(event, context, offering_id, data):
         updated_doc = offering_ref.get()
         payload = updated_doc.to_dict() or {}
         payload['id'] = updated_doc.id
-        payload['createdAt'] = serialize_timestamp(payload.get('createdAt'))
-        payload['updatedAt'] = serialize_timestamp(payload.get('updatedAt'))
-        payload['availableAt'] = serialize_timestamp(payload.get('availableAt'))
+        # Recursively serialize all datetime fields
+        payload = serialize_data_recursive(payload)
         
         return lambda_response({'success': True, 'offering': payload})
     except Exception as e:
@@ -1706,8 +1700,8 @@ def create_custom_qr(event, context, data):
         
         record = qr_ref.get().to_dict() or {}
         record['qrToken'] = qr_token
-        record['expiresAt'] = serialize_timestamp(record.get('expiresAt'))
-        record['createdAt'] = serialize_timestamp(record.get('createdAt'))
+        # Recursively serialize all datetime fields
+        record = serialize_data_recursive(record)
         
         return lambda_response({'success': True, 'qrCode': record}, 201)
     except Exception as e:
