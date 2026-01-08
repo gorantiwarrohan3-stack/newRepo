@@ -165,30 +165,31 @@ def handler(event, context):
         "headers": {...}
     }
     """
-    # Handle CORS preflight
-    if event.get('httpMethod') == 'OPTIONS':
-        return lambda_response('', 204)
-    
-    method = event.get('httpMethod', 'GET')
-    path = event.get('path', '')
-    path_params = event.get('pathParameters') or {}
-    query_params = event.get('queryStringParameters') or {}
-    
-    # Parse body if present
-    body = {}
-    if event.get('body'):
-        try:
-            body = json.loads(event['body'])
-        except:
-            body = {}
-    
-    # Route to appropriate handler
-    if path == '/health' or path == '/api/health':
-        return health_check(event, context)
-    elif path == '/api/register' and method == 'POST':
-        return register_user(event, context, body)
-    elif path == '/api/check-user' and method == 'POST':
-        return check_user(event, context, body)
+    try:
+        # Handle CORS preflight
+        if event.get('httpMethod') == 'OPTIONS':
+            return lambda_response('', 204)
+        
+        method = event.get('httpMethod', 'GET')
+        path = event.get('path', '')
+        path_params = event.get('pathParameters') or {}
+        query_params = event.get('queryStringParameters') or {}
+        
+        # Parse body if present
+        body = {}
+        if event.get('body'):
+            try:
+                body = json.loads(event['body'])
+            except:
+                body = {}
+        
+        # Route to appropriate handler
+        if path == '/health' or path == '/api/health':
+            return health_check(event, context)
+        elif path == '/api/register' and method == 'POST':
+            return register_user(event, context, body)
+        elif path == '/api/check-user' and method == 'POST':
+            return check_user(event, context, body)
     elif path == '/api/login-history' and method == 'POST':
         return record_login(event, context, body)
     elif '/api/login-history/' in path and method == 'GET':
@@ -256,6 +257,16 @@ def handler(event, context):
         return list_custom_qr(event, context, uid)
     else:
         return lambda_response({'error': 'Not found', 'path': path, 'method': method}, 404)
+    except Exception as e:
+        # Ensure CORS headers are always included, even on unhandled exceptions
+        print(f"Unhandled error in handler: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return lambda_response({
+            'success': False,
+            'error': 'Internal server error',
+            'message': str(e)
+        }, 500)
 
 
 def health_check(event, context):
