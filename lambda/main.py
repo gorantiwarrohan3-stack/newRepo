@@ -407,8 +407,8 @@ def get_user_profile(event, context, uid):
             }, 404)
         
         user_data = doc.to_dict()
-        user_data['createdAt'] = serialize_timestamp(user_data.get('createdAt'))
-        user_data['updatedAt'] = serialize_timestamp(user_data.get('updatedAt'))
+        # Recursively serialize all datetime fields
+        user_data = serialize_data_recursive(user_data)
         
         return lambda_response({
             'success': True,
@@ -448,8 +448,8 @@ def update_user_profile(event, context, uid, data):
         user_ref.update(update_data)
         updated_doc = user_ref.get()
         user_data = updated_doc.to_dict()
-        user_data['createdAt'] = serialize_timestamp(user_data.get('createdAt'))
-        user_data['updatedAt'] = serialize_timestamp(user_data.get('updatedAt'))
+        # Recursively serialize all datetime fields
+        user_data = serialize_data_recursive(user_data)
         
         return lambda_response({
             'success': True,
